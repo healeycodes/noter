@@ -1,8 +1,9 @@
 A Bird, came down the Walk.txt
 
 fonts/monospaced
-fonts/dist
 fonts/.DS_Store
+fonts/dist/fonts.json
+fonts/dist/fonts.store
 
 noter
 
