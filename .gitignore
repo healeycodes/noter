@@ -1,7 +1,10 @@
 A Bird, came down the Walk.txt
+
 fonts/monospaced
 fonts/dist
 fonts/.DS_Store
+
+noter
 
 # If you prefer the allow list template instead of the deny list, see community template:
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore

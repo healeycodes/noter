@@ -26,3 +26,5 @@ with open(store_file, "ab") as store_file_f:
 
 with open(store_file_map, "w") as f:
     json.dump(fonts, f)
+
+print("fonts built!")

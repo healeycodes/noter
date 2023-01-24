@@ -8,9 +8,7 @@ It's a bit like `nano`.
 
 ## Development
 
-Grab the fonts from: https://github.com/TakWolf/ark-pixel-font. Move the directory at `assets/glyphs/12/monospaced` to be inside `./fonts` e.g. the following file should now exist: `./fonts/monospaced/0000-007F Basic Latin/0021.png`.
-
-Run the font build script `python3 build_fonts.py`
+Run the fonts build script `bash fonts.sh`
 
 Run the editor `go run . -- some_file.txt`
 
