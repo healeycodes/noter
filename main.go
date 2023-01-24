@@ -285,6 +285,7 @@ func (e *Editor) Update() error {
 			if e.cursor.line.prev != nil {
 				e.cursor.line = e.cursor.line.prev
 			}
+			e.cursor.x = int(math.Min(float64(e.cursor.x), float64(len(e.cursor.line.values)-1)))
 		}
 		return nil
 	} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) && ebiten.IsKeyPressed(ebiten.KeyShift) {
@@ -292,6 +293,7 @@ func (e *Editor) Update() error {
 		if e.cursor.line.next != nil {
 			e.cursor.line = e.cursor.line.next
 		}
+		e.cursor.x = int(math.Min(float64(e.cursor.x), float64(len(e.cursor.line.values)-1)))
 		return nil
 	}
 
@@ -375,36 +377,6 @@ func (e *Editor) GetAllRunes() []rune {
 		cur = cur.next
 	}
 	return all
-}
-
-func macOScopy(copyBytes []byte) error {
-	cmd := exec.Command("pbcopy")
-	in, err := cmd.StdinPipe()
-	if err != nil {
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	if _, err := in.Write(copyBytes); err != nil {
-		return err
-	}
-	if err := in.Close(); err != nil {
-		return err
-	}
-	if err := cmd.Wait(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func macOSpaste() ([]byte, error) {
-	cmd := exec.Command("pbpaste")
-	pasteBytes, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-	return pasteBytes, nil
 }
 
 func (e *Editor) GetLineNumber() int {
@@ -749,6 +721,36 @@ func KeyToRune(k ebiten.Key, shift bool) (rune, bool) {
 	}
 
 	return rune(ret[0]), true
+}
+
+func macOScopy(copyBytes []byte) error {
+	cmd := exec.Command("pbcopy")
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	if _, err := in.Write(copyBytes); err != nil {
+		return err
+	}
+	if err := in.Close(); err != nil {
+		return err
+	}
+	if err := cmd.Wait(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func macOSpaste() ([]byte, error) {
+	cmd := exec.Command("pbpaste")
+	pasteBytes, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	return pasteBytes, nil
 }
 
 func main() {

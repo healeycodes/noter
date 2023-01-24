@@ -18,6 +18,6 @@ Run the editor `go run . -- some_file.txt`
 
 ## Roadmap
 
-- Scrolling improvements? Maybe add some "intelligence" here.
-  - Rather than manual scrolling, let's scroll the page when the cursor goes under, or above, the view
+- Scrolling improvements
+  - If we're about to draw the cursor above/below the screen, then force a scroll (might cause a flicker)
   - Scroll into view when user types off-screen
