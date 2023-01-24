@@ -10,7 +10,7 @@ It's a little bit like `nano`.
 
 Run the fonts build script `bash fonts.sh`
 
-Run the editor `go run . -- some_file.txt`
+Run the editor `go run . -- A\ Bird,\ came\ down\ the\ Walk.txt`
 
 ## Build
 

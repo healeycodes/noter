@@ -428,7 +428,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 	})
 
 	// Handle bottom bar
-	botBar := []rune(fmt.Sprintf("(x cut, v paste, s save, q quit, c copyall) [%v:%v] ", e.GetLineNumber(), e.cursor.x+1))
+	botBar := []rune(fmt.Sprintf("(x cut, v paste, s save, q quit, c copyall) [%v:%v:%v] ", e.GetLineNumber(), e.cursor.x+1, e.cursor.line.values[e.cursor.x]))
 	for x, char := range botBar {
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(float64(x*xUnit)+xPadding, float64(yLayout-yUnit))
