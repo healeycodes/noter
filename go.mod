@@ -1,4 +1,4 @@
-module github.com/healeycodes/undefined
+module github.com/healeycodes/noter
 
 go 1.19
 

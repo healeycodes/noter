@@ -349,7 +349,7 @@ func (e *Editor) Update() error {
 		key := ebiten.Key(i)
 		if inpututil.IsKeyJustPressed(key) {
 			shift := ebiten.IsKeyPressed(ebiten.KeyShift)
-			keyRune, printable := keyToRune(key, shift)
+			keyRune, printable := KeyToRune(key, shift)
 
 			// Skip unprintable keys (like Enter/Esc)
 			if !printable {
@@ -544,33 +544,8 @@ func (e *Editor) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHei
 	return _xScreen / 2, _yScreen / 2
 }
 
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("usage: noter <filepath>")
-		os.Exit(1)
-	} else if len(os.Args) == 3 {
-		// Allow `go run . -- a.txt` for now..
-		filePath = os.Args[2]
-	} else {
-		// This is the way
-		filePath = os.Args[1]
-	}
-
-	editor := &Editor{}
-	err := editor.Load()
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	ebiten.SetWindowSize(800, 500)
-	ebiten.SetWindowTitle("noter")
-	if err = ebiten.RunGame(editor); err != nil {
-		log.Fatalln(err)
-	}
-}
-
 // Supports macOS UK keyboard
-func keyToRune(k ebiten.Key, shift bool) (rune, bool) {
+func KeyToRune(k ebiten.Key, shift bool) (rune, bool) {
 	ret := ""
 
 	switch k {
@@ -774,4 +749,29 @@ func keyToRune(k ebiten.Key, shift bool) (rune, bool) {
 	}
 
 	return rune(ret[0]), true
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("usage: noter <filepath>")
+		os.Exit(1)
+	} else if len(os.Args) == 3 {
+		// Allow `go run . -- a.txt` for now..
+		filePath = os.Args[2]
+	} else {
+		// This is the way
+		filePath = os.Args[1]
+	}
+
+	editor := &Editor{}
+	err := editor.Load()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	ebiten.SetWindowSize(800, 500)
+	ebiten.SetWindowTitle("noter")
+	if err = ebiten.RunGame(editor); err != nil {
+		log.Fatalln(err)
+	}
 }

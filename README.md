@@ -16,7 +16,7 @@ Run the editor `go run . -- some_file.txt`
 
 ## Tests
 
-TODO
+`go test ./...`
 
 ## Roadmap
 
