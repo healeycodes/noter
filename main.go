@@ -26,7 +26,7 @@ var (
 	//go:embed fonts/dist/fonts.store
 	fontStoreRaw []byte
 	//go:embed fonts/dist/fonts.json
-	fontMapRaw []byte // hex: [offset, size]
+	fontMapRaw []byte // unicode hex: [offset, size]
 	fontImages map[rune]*ebiten.Image
 	xUnit      int
 	yUnit      int
