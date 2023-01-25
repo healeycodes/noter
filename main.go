@@ -189,12 +189,12 @@ func (e *Editor) HandleRune(r rune) {
 
 func (e *Editor) Update() error {
 	// Log key number
-	for i := 0; i < int(ebiten.KeyMax); i++ {
-		if inpututil.IsKeyJustPressed(ebiten.Key(i)) {
-			println(i)
-			return nil
-		}
-	}
+	// for i := 0; i < int(ebiten.KeyMax); i++ {
+	// 	if inpututil.IsKeyJustPressed(ebiten.Key(i)) {
+	// 		println(i)
+	// 		return nil
+	// 	}
+	// }
 
 	// Quit
 	if inpututil.IsKeyJustPressed(ebiten.KeyQ) && ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
