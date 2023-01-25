@@ -33,8 +33,5 @@ Run the editor `go run . -- "A Bird, came down the Walk.txt"`
 
 ## Roadmap
 
-- alt+arrows to skip words/spacing
-- cmd+up/down should skip pages rather than move to the start of the document
-- abstract away more logic into methods on Line (and a new RuneList type?)
-- more tests
-- search?
+- More tests
+- Search?
