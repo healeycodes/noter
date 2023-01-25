@@ -35,5 +35,6 @@ Run the editor `./noter "A Bird, came down the Walk.txt"`
 
 ## Roadmap
 
+- Text highlighting (and more fine grained cut/copy/paste)
 - More tests
 - Search?
