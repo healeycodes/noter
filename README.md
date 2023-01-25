@@ -1,3 +1,5 @@
+[![CI](https://github.com/healeycodes/noter/actions/workflows/ci.yml/badge.svg)](https://github.com/healeycodes/noter/actions/workflows/ci.yml)
+
 # 📝 noter
 
 A text editor for macOS. Built using the [Ebitengine](https://github.com/hajimehoshi/ebiten) game engine.
