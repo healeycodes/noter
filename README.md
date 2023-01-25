@@ -25,7 +25,9 @@ Run the editor `go run . -- "A Bird, came down the Walk.txt"`
 
 ## Build
 
-`go build .`
+Build `go build .`
+
+Run the editor `./noter "A Bird, came down the Walk.txt"`
 
 ## Tests
 
