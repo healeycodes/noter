@@ -8,7 +8,7 @@ It's a little bit like `nano`.
 
 ## Shortcuts
 
-Command+
+Command +
 - c: copy line
 - x: cut line
 - v: paste
