@@ -6,6 +6,17 @@ A text editor for macOS. Built using the [Ebiten](https://github.com/hajimehoshi
 
 It's a little bit like `nano`.
 
+## Guide
+
+- command+c: copy line
+- command+x: cut line
+- command+v: paste
+- command+x: save
+- command+q: quit without saving
+
+- command+left/right skips to start/end of line
+- command+up/down is the same as page up/page down
+
 ## Development
 
 Run the fonts build script `bash fonts.sh`

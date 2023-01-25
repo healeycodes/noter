@@ -43,6 +43,36 @@ type Cursor struct {
 	x    int
 }
 
+type ScreenInfo struct {
+	xLayout  int
+	yLayout  int
+	xSlots   int
+	xPadding float64
+	yPadding float64
+}
+
+func GetScreenInfo() ScreenInfo {
+	// The screen is larger than the layout!
+	xScreen, yScreen := ebiten.WindowSize()
+	xLayout := xScreen / 2
+	yLayout := yScreen / 2
+
+	xPadding := float64(xUnit) / 2
+	yPadding := float64(yUnit) * 1.25
+
+	// How many lines of text can be displayed
+	// (there's yPadding for top and bottom bar)
+	xSlots := (yLayout - int(yPadding*2)) / yUnit
+
+	return ScreenInfo{
+		xLayout:  xLayout,
+		yLayout:  yLayout,
+		xSlots:   xSlots,
+		xPadding: xPadding,
+		yPadding: yPadding,
+	}
+}
+
 type Editor struct {
 	start    *Line
 	cursor   *Cursor
@@ -159,12 +189,12 @@ func (e *Editor) HandleRune(r rune) {
 
 func (e *Editor) Update() error {
 	// Log key number
-	// for i := 0; i < int(ebiten.KeyMax); i++ {
-	// 	if inpututil.IsKeyJustPressed(ebiten.Key(i)) {
-	// 		println(i)
-	// 		return nil
-	// 	}
-	// }
+	for i := 0; i < int(ebiten.KeyMax); i++ {
+		if inpututil.IsKeyJustPressed(ebiten.Key(i)) {
+			println(i)
+			return nil
+		}
+	}
 
 	// Quit
 	if inpututil.IsKeyJustPressed(ebiten.KeyQ) && ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
@@ -302,7 +332,9 @@ func (e *Editor) Update() error {
 		}
 	} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 		if ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
-			for e.cursor.line.prev != nil {
+			xSlotsCounter := GetScreenInfo().xSlots
+			for xSlotsCounter != 0 && e.cursor.line.prev != nil {
+				xSlotsCounter--
 				e.cursor.line = e.cursor.line.prev
 			}
 			return nil
@@ -313,10 +345,12 @@ func (e *Editor) Update() error {
 		}
 	} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
 		if ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
-			for e.cursor.line.next != nil {
+			i := 1
+			xSlotsCounter := GetScreenInfo().xSlots
+			for i < xSlotsCounter && e.cursor.line.next != nil {
+				i++
 				e.cursor.line = e.cursor.line.next
 			}
-			return nil
 		}
 		if e.cursor.line.next != nil {
 			e.cursor.x = int(math.Min(float64(e.cursor.x), float64(len(e.cursor.line.next.values)-1)))
@@ -370,20 +404,7 @@ func (e *Editor) GetLineNumber() int {
 
 func (e *Editor) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{255, 255, 255, 0xff})
-	xPadding := float64(xUnit) / 2
-	yPadding := float64(yUnit) * 1.25
-
-	// The screen is larger than the layout!
-	_xScreen, _yScreen := ebiten.WindowSize()
-	xLayout := _xScreen / 2
-	yLayout := _yScreen / 2
-
-	// How many lines of text can be displayed
-	// (there's yPadding for top and bottom bar)
-	xSlots := (yLayout - int(yPadding*2)) / yUnit
-
-	// How many characters can be displayed width-wise
-	// ySlots := (xLayout - int(xPadding*2)) / xUnit
+	screenInfo := GetScreenInfo()
 
 	// Handle top bar
 	modifiedText := ""
@@ -393,7 +414,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 	topBar := []rune(fmt.Sprintf("%s %s", fileName, modifiedText))
 	for x, char := range topBar {
 		opts := &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(float64(x*xUnit)+xPadding, 0)
+		opts.GeoM.Translate(float64(x*xUnit)+screenInfo.xPadding, 0)
 		fontImage, ok := fontImages[char]
 		if !ok {
 			// Filler character for an unknown character (missing image)
@@ -402,7 +423,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 			screen.DrawImage(fontImage, opts)
 		}
 	}
-	ebitenutil.DrawLine(screen, 0, float64(yUnit+1), float64(xLayout), float64(yUnit+1), color.RGBA{
+	ebitenutil.DrawLine(screen, 0, float64(yUnit+1), float64(screenInfo.xLayout), float64(yUnit+1), color.RGBA{
 		0, 0, 0, 100,
 	})
 
@@ -410,7 +431,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 	botBar := []rune(fmt.Sprintf("(x cut line, v paste, s save, q quit, c copy line) [%v:%v:%v] ", e.GetLineNumber(), e.cursor.x+1, e.cursor.line.values[e.cursor.x]))
 	for x, char := range botBar {
 		opts := &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(float64(x*xUnit)+xPadding, float64(yLayout-yUnit))
+		opts.GeoM.Translate(float64(x*xUnit)+screenInfo.xPadding, float64(screenInfo.yLayout-yUnit))
 		fontImage, ok := fontImages[char]
 		if !ok {
 			// Filler character for an unknown character (missing image)
@@ -419,7 +440,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 			screen.DrawImage(fontImage, opts)
 		}
 	}
-	ebitenutil.DrawLine(screen, 0, float64(yLayout-yUnit-2), float64(xLayout), float64(yLayout-yUnit-2), color.RGBA{
+	ebitenutil.DrawLine(screen, 0, float64(screenInfo.yLayout-yUnit-2), float64(screenInfo.xLayout), float64(screenInfo.yLayout-yUnit-2), color.RGBA{
 		0, 0, 0, 100,
 	})
 
@@ -429,15 +450,15 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 
 	// Find the screen chunk to render
 	lineNum := e.GetLineNumber() - 1
-	screenChunksToSkip := lineNum / xSlots
-	for i := 0; i < screenChunksToSkip*xSlots; i++ {
+	screenChunksToSkip := lineNum / screenInfo.xSlots
+	for i := 0; i < screenChunksToSkip*screenInfo.xSlots; i++ {
 		// Skip to that screen chunk
 		curLine = curLine.next
 	}
 
 	for curLine != nil {
 		// Don't render outside the line area
-		if y == xSlots {
+		if y == screenInfo.xSlots {
 			break
 		}
 
@@ -452,7 +473,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 				// If we're about to render off the edge of the screen
 				// it means we're trying to view a very long line.
 				// Clear the current line and start from zero (hiding everything to the left)
-				if float64(x*xUnit)+xPadding >= float64(xLayout) {
+				if float64(x*xUnit)+screenInfo.xPadding >= float64(screenInfo.xLayout) {
 					if xOverSpilled {
 						// Only clear the current line once, otherwise stop rendering
 						// otherwise we'll get visual bugs
@@ -460,23 +481,23 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 					}
 					x = 0
 					xOverSpilled = true
-					ebitenutil.DrawRect(screen, 0, float64(y*yUnit)+yPadding, float64(xLayout), float64(yUnit), color.RGBA{
+					ebitenutil.DrawRect(screen, 0, float64(y*yUnit)+screenInfo.yPadding, float64(screenInfo.xLayout), float64(yUnit), color.RGBA{
 						255, 255, 255, 255,
 					})
 				}
 
 				// Draw grey cursor background
-				ebitenutil.DrawRect(screen, float64(x*xUnit)+xPadding, float64(y*yUnit)+yPadding, float64(xUnit), float64(yUnit), color.RGBA{
+				ebitenutil.DrawRect(screen, float64(x*xUnit)+screenInfo.xPadding, float64(y*yUnit)+screenInfo.yPadding, float64(xUnit), float64(yUnit), color.RGBA{
 					0, 0, 0, 100,
 				})
 			}
 
-			opts.GeoM.Translate(float64(x*xUnit)+xPadding, float64(y*yUnit)+yPadding)
+			opts.GeoM.Translate(float64(x*xUnit)+screenInfo.xPadding, float64(y*yUnit)+screenInfo.yPadding)
 			if char != '\n' {
 				fontImage, ok := fontImages[char]
 				if !ok {
 					// Render a red square [?] for unknown characters
-					ebitenutil.DrawRect(screen, float64(x*xUnit)+xPadding, float64(y*yUnit)+yPadding, float64(xUnit), float64(yUnit), color.RGBA{
+					ebitenutil.DrawRect(screen, float64(x*xUnit)+screenInfo.xPadding, float64(y*yUnit)+screenInfo.yPadding, float64(xUnit), float64(yUnit), color.RGBA{
 						90, 0, 0, 60,
 					})
 					screen.DrawImage(fontImages[rune('?')], opts)
