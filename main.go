@@ -46,7 +46,6 @@ type Cursor struct {
 type Editor struct {
 	start    *Line
 	cursor   *Cursor
-	scroll   int
 	modified bool
 }
 
@@ -90,7 +89,6 @@ func (e *Editor) Load() error {
 	source := string(b)
 
 	e.modified = false
-	e.scroll = 0
 	e.start = &Line{values: make([]rune, 0)}
 	e.cursor = &Cursor{line: e.start, x: 0}
 	currentLine := e.start
@@ -278,25 +276,6 @@ func (e *Editor) Update() error {
 		return nil
 	}
 
-	// Scroll
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) && ebiten.IsKeyPressed(ebiten.KeyShift) {
-		if e.scroll > 0 {
-			e.scroll--
-			if e.cursor.line.prev != nil {
-				e.cursor.line = e.cursor.line.prev
-			}
-			e.cursor.x = int(math.Min(float64(e.cursor.x), float64(len(e.cursor.line.values)-1)))
-		}
-		return nil
-	} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) && ebiten.IsKeyPressed(ebiten.KeyShift) {
-		e.scroll++
-		if e.cursor.line.next != nil {
-			e.cursor.line = e.cursor.line.next
-		}
-		e.cursor.x = int(math.Min(float64(e.cursor.x), float64(len(e.cursor.line.values)-1)))
-		return nil
-	}
-
 	// Movement
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 		if ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
@@ -379,6 +358,7 @@ func (e *Editor) GetAllRunes() []rune {
 	return all
 }
 
+// Get the cursor's current line number (not zero indexed)
 func (e *Editor) GetLineNumber() int {
 	cur := e.start
 	count := 1
@@ -448,10 +428,11 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 	curLine := e.start
 	y := 0
 
-	scrollCounter := e.scroll
-	for scrollCounter > 0 && curLine != nil {
-		scrollCounter--
-		// Skip all the lines above the scroll position
+	// Find the screen chunk to render
+	lineNum := e.GetLineNumber() - 1
+	screenChunksToSkip := lineNum / xSlots
+	for i := 0; i < screenChunksToSkip*xSlots; i++ {
+		// Skip to that screen chunk
 		curLine = curLine.next
 	}
 

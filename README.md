@@ -22,6 +22,8 @@ Run the editor `go run . -- "A Bird, came down the Walk.txt"`
 
 ## Roadmap
 
-- Scrolling improvements
-  - If we're about to draw the cursor above/below the screen, then force a scroll (might cause a flicker)
-  - Scroll into view when user types off-screen
+- alt+arrows to skip words/spacing
+- cmd+up/down should skip pages rather than move to the start of the document
+- abstract away more logic into methods on Line (and a new RuneList type?)
+- more tests
+- search?
