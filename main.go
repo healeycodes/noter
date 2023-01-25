@@ -333,7 +333,7 @@ func (e *Editor) Update() error {
 	} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 		if ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
 			xSlotsCounter := GetScreenInfo().xSlots
-			for xSlotsCounter != 0 && e.cursor.line.prev != nil {
+			for e.cursor.line.prev != nil && xSlotsCounter != 0 {
 				xSlotsCounter--
 				e.cursor.line = e.cursor.line.prev
 			}
@@ -347,7 +347,7 @@ func (e *Editor) Update() error {
 		if ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
 			i := 1
 			xSlotsCounter := GetScreenInfo().xSlots
-			for i < xSlotsCounter && e.cursor.line.next != nil {
+			for e.cursor.line.next != nil && i < xSlotsCounter {
 				i++
 				e.cursor.line = e.cursor.line.next
 			}
