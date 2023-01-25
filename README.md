@@ -1,4 +1,7 @@
 # 📝 noter
+> My blog post: [Making a Text Editor with a Game Engine](https://healeycodes.com/making-a-text-editor-with-a-game-engine)
+
+<br>
 
 A text editor for macOS. Built using the [Ebitengine](https://github.com/hajimehoshi/ebiten) game engine.
 
