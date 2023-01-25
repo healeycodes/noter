@@ -6,16 +6,16 @@ A text editor for macOS. Built using the [Ebitengine](https://github.com/hajimeh
 
 It's a little bit like `nano`.
 
-## Guide
+## Shortcuts
 
-- command+c: copy line
-- command+x: cut line
-- command+v: paste
-- command+x: save
-- command+q: quit without saving
-
-- command+left/right skips to start/end of line
-- command+up/down is the same as page up/page down
+Command+
+- c: copy line
+- x: cut line
+- v: paste
+- x: save
+- q: quit without saving
+- left/right: skips to start/end of line
+- up/down: is the same as page up/page down
 
 ## Development
 
