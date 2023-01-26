@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -43,12 +44,16 @@ type Cursor struct {
 	x    int
 }
 
+func (c *Cursor) FixPosition() {
+	c.x = int(math.Min(float64(c.x), float64(len(c.line.values)-1)))
+}
+
 type ScreenInfo struct {
-	xLayout  int
-	yLayout  int
-	xSlots   int
-	xPadding float64
-	yPadding float64
+	xLayout   int
+	yLayout   int
+	lineSlots int
+	xPadding  float64
+	yPadding  float64
 }
 
 func GetScreenInfo() ScreenInfo {
@@ -62,21 +67,15 @@ func GetScreenInfo() ScreenInfo {
 
 	// How many lines of text can be displayed
 	// (there's yPadding for top and bottom bar)
-	xSlots := (yLayout - int(yPadding*2)) / yUnit
+	lineSlots := (yLayout - int(yPadding*2)) / yUnit
 
 	return ScreenInfo{
-		xLayout:  xLayout,
-		yLayout:  yLayout,
-		xSlots:   xSlots,
-		xPadding: xPadding,
-		yPadding: yPadding,
+		xLayout:   xLayout,
+		yLayout:   yLayout,
+		lineSlots: lineSlots,
+		xPadding:  xPadding,
+		yPadding:  yPadding,
 	}
-}
-
-type Editor struct {
-	start    *Line
-	cursor   *Cursor
-	modified bool
 }
 
 func init() {
@@ -103,6 +102,50 @@ func init() {
 	yUnit = zeroBounds.Dy()
 }
 
+type Editor struct {
+	start       *Line
+	cursor      *Cursor
+	modified    bool
+	highlighted map[*Line]map[int]bool
+}
+
+func (e *Editor) Highlight(line *Line, x int) {
+	if _, ok := e.highlighted[line]; ok {
+		e.highlighted[line][x] = true
+	} else {
+		e.highlighted[line] = map[int]bool{x: true}
+	}
+}
+
+func (e *Editor) DeleteHighlighted() {
+	highlightCount := 0
+	endOfHighlightLine := e.start
+	endOfHighlightLineX := 0
+	curLine := e.start
+	for curLine != nil {
+		if lineWithHighlights, ok := e.highlighted[curLine]; ok {
+			endOfHighlightLine = curLine
+			endOfHighlightLineX = 0
+			for index := range lineWithHighlights {
+				endOfHighlightLineX = int(math.Max(float64(index), float64(endOfHighlightLineX)))
+				highlightCount++
+			}
+		}
+		curLine = curLine.next
+	}
+	e.cursor.line = endOfHighlightLine
+	e.cursor.x = endOfHighlightLineX + 1
+
+	for i := 0; i < highlightCount; i++ {
+		e.DeletePrevious()
+	}
+	e.cursor.FixPosition()
+}
+
+func (e *Editor) ResetHighlight() {
+	e.highlighted = make(map[*Line]map[int]bool)
+}
+
 func (e *Editor) Load() error {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -118,7 +161,7 @@ func (e *Editor) Load() error {
 
 	source := string(b)
 
-	e.modified = false
+	e.highlighted = make(map[*Line]map[int]bool)
 	e.start = &Line{values: make([]rune, 0)}
 	e.cursor = &Cursor{line: e.start, x: 0}
 	currentLine := e.start
@@ -196,14 +239,18 @@ func (e *Editor) Update() error {
 	// 	}
 	// }
 
+	// Modifiers
+	command := ebiten.IsKeyPressed(ebiten.KeyMeta)
+	shift := ebiten.IsKeyPressed(ebiten.KeyShift)
+
 	// Quit
-	if inpututil.IsKeyJustPressed(ebiten.KeyQ) && ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
+	if command && inpututil.IsKeyJustPressed(ebiten.KeyQ) {
 		os.Exit(0)
 		return nil
 	}
 
 	// Save
-	if inpututil.IsKeyJustPressed(ebiten.KeyS) && ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
+	if command && inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		allRunes := e.GetAllRunes()
 		saveFile, err := os.Create(filePath)
 		if err != nil {
@@ -217,8 +264,14 @@ func (e *Editor) Update() error {
 		return nil
 	}
 
+	// Highlight all
+	if command && inpututil.IsKeyJustPressed(ebiten.KeyA) {
+		e.SelectAll()
+		return nil
+	}
+
 	// Paste
-	if inpututil.IsKeyJustPressed(ebiten.KeyV) && ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
+	if command && inpututil.IsKeyJustPressed(ebiten.KeyV) {
 		pasteBytes, err := macOSpaste()
 		if err != nil {
 			log.Fatalln(err)
@@ -226,48 +279,154 @@ func (e *Editor) Update() error {
 		for _, r := range string(pasteBytes) {
 			e.HandleRune(r)
 		}
+		e.modified = true
 		return nil
 	}
 
-	// Cut line
-	if inpututil.IsKeyJustPressed(ebiten.KeyX) && ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
-		copyBytes := []byte(string(e.cursor.line.values))
-		err := macOScopy(copyBytes)
+	// Cut highlight
+	if command && inpututil.IsKeyJustPressed(ebiten.KeyX) {
+		copyRunes := e.GetHighlightedRunes()
+		if len(copyRunes) == 0 {
+			return nil
+		}
+
+		err := macOScopy([]byte(string(copyRunes)))
 		if err != nil {
 			log.Fatalln(err)
 		}
 
-		// Remove the line
-		if e.cursor.line.prev == nil && e.cursor.line.next == nil {
-			e.cursor.line.values = []rune{'\n'}
-		} else {
-			if e.cursor.line.next == nil {
-				e.cursor.line.prev.next = nil
-				e.cursor.line = e.cursor.line.prev
-			} else if e.cursor.line.prev == nil {
-				// Make sure that e.start isn't pointing to a 'dead line'
-				e.start = e.cursor.line.next
-				e.cursor.line.next.prev = nil
-				e.cursor.line = e.cursor.line.next
-			} else {
-				e.cursor.line.prev.next = e.cursor.line.next
-				e.cursor.line.next.prev = e.cursor.line.prev
-				e.cursor.line = e.cursor.line.next
+		e.DeleteHighlighted()
+		e.ResetHighlight()
+
+		e.modified = true
+		return nil
+	}
+
+	// Copy highlight
+	if command && inpututil.IsKeyJustPressed(ebiten.KeyC) {
+		if len(e.highlighted) == 0 {
+			return nil
+		}
+		copyRunes := e.GetHighlightedRunes()
+		copyBytes := []byte(string(copyRunes))
+		err := macOScopy(copyBytes)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		return nil
+	}
+
+	// Movement
+	right := inpututil.IsKeyJustPressed(ebiten.KeyArrowRight)
+	left := inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft)
+	up := inpututil.IsKeyJustPressed(ebiten.KeyArrowUp)
+	down := inpututil.IsKeyJustPressed(ebiten.KeyArrowDown)
+
+	if right {
+		if command {
+			for e.cursor.x < len(e.cursor.line.values)-2 {
+				if shift {
+					e.Highlight(e.cursor.line, e.cursor.x)
+				}
+				e.cursor.x++
 			}
-
-			e.cursor.x = int(math.Min(float64(e.cursor.x), float64(len(e.cursor.line.values)-1)))
+		} else {
+			if e.cursor.x < len(e.cursor.line.values)-1 {
+				if shift {
+					e.Highlight(e.cursor.line, e.cursor.x)
+				}
+				e.cursor.x++
+			} else if e.cursor.line.next != nil {
+				if shift {
+					e.Highlight(e.cursor.line, len(e.cursor.line.values)-1)
+				}
+				e.cursor.line = e.cursor.line.next
+				e.cursor.x = 0
+			}
 		}
-		return nil
+	} else if left {
+		if command {
+			for e.cursor.x > 0 {
+				e.cursor.x--
+				if shift {
+					e.Highlight(e.cursor.line, e.cursor.x)
+				}
+			}
+		} else {
+			if e.cursor.x > 0 {
+				e.cursor.x--
+				if shift {
+					e.Highlight(e.cursor.line, e.cursor.x)
+				}
+			} else if e.cursor.line.prev != nil {
+				e.cursor.line = e.cursor.line.prev
+				e.cursor.x = len(e.cursor.line.values) - 1
+				if shift {
+					e.Highlight(e.cursor.line, e.cursor.x)
+				}
+			}
+		}
+	} else if up {
+		if command {
+			if shift {
+				e.HighlightLineToLeft()
+			}
+			for e.cursor.line.prev != nil {
+				if shift {
+					e.HighlightLine()
+				}
+				e.cursor.line = e.cursor.line.prev
+				e.cursor.x = 0
+				e.HighlightLineToRight()
+			}
+		} else {
+			for x := e.cursor.x; shift && x >= 0; x-- {
+				e.Highlight(e.cursor.line, x)
+			}
+			if e.cursor.line.prev != nil {
+				e.cursor.line = e.cursor.line.prev
+				for x := e.cursor.x; shift && x < len(e.cursor.line.values); x++ {
+					e.Highlight(e.cursor.line, x)
+				}
+			} else {
+				e.cursor.x = 0
+			}
+			e.cursor.FixPosition()
+		}
+	} else if down {
+		if command {
+			for e.cursor.line.next != nil {
+				if shift {
+					e.HighlightLineToRight()
+				}
+				e.cursor.line = e.cursor.line.next
+				if shift {
+					e.HighlightLineToLeft()
+				}
+			}
+			// Instead of fixing position, we actually want the document end
+			if shift {
+				e.HighlightLineToRight()
+			}
+			e.cursor.x = len(e.cursor.line.values) - 1
+		}
+		if e.cursor.line.next != nil {
+			if shift {
+				e.HighlightLineToRight()
+			}
+			e.cursor.line = e.cursor.line.next
+			e.cursor.FixPosition()
+			if shift {
+				e.HighlightLineToLeft()
+			}
+		} else {
+			e.cursor.x = len(e.cursor.line.values) - 1
+		}
 	}
 
-	// Copy line
-	if inpututil.IsKeyJustPressed(ebiten.KeyC) && ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
-		copyBytes := []byte(string(e.cursor.line.values))
-		err := macOScopy(copyBytes)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		return nil
+	// Clean up any old highlighting
+	if (right || left || up || down) && !shift {
+		e.ResetHighlight()
 	}
 
 	// Enter
@@ -286,83 +445,23 @@ func (e *Editor) Update() error {
 
 	// Backspace
 	if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
-		if e.cursor.x == 0 {
-			if e.cursor.line.prev != nil {
-				e.cursor.x = len(e.cursor.line.prev.values) - 1
-				e.cursor.line.prev.values = e.cursor.line.prev.values[:len(e.cursor.line.prev.values)-1]
-				e.cursor.line.prev.values = append(e.cursor.line.prev.values, e.cursor.line.values...)
-				e.cursor.line.prev.next = e.cursor.line.next
-				if e.cursor.line.next != nil {
-					e.cursor.line.next.prev = e.cursor.line.prev
-				}
-				e.cursor.line = e.cursor.line.prev
-			}
+		// Delete all highlighted content
+		if len(e.highlighted) != 0 {
+			e.DeleteHighlighted()
 		} else {
-			e.cursor.x--
-			e.cursor.line.values = append(e.cursor.line.values[:e.cursor.x], e.cursor.line.values[e.cursor.x+1:]...)
+			// Or..
+			e.DeletePrevious()
 		}
+
+		e.ResetHighlight()
 		e.modified = true
 		return nil
-	}
-
-	// Movement
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
-		if ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
-			for e.cursor.x < len(e.cursor.line.values)-1 {
-				e.cursor.x++
-			}
-			return nil
-		}
-		if e.cursor.x < len(e.cursor.line.values)-1 {
-			e.cursor.x++
-		} else if e.cursor.line.next != nil {
-			e.cursor.line = e.cursor.line.next
-			e.cursor.x = 0
-		}
-	} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
-		if ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
-			e.cursor.x = 0
-			return nil
-		}
-		if e.cursor.x > 0 {
-			e.cursor.x--
-		} else if e.cursor.line.prev != nil {
-			e.cursor.line = e.cursor.line.prev
-			e.cursor.x = len(e.cursor.line.values) - 1
-		}
-	} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-		if ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
-			xSlotsCounter := GetScreenInfo().xSlots
-			for e.cursor.line.prev != nil && xSlotsCounter != 0 {
-				xSlotsCounter--
-				e.cursor.line = e.cursor.line.prev
-			}
-			return nil
-		}
-		if e.cursor.line.prev != nil {
-			e.cursor.x = int(math.Min(float64(e.cursor.x), float64(len(e.cursor.line.prev.values)-1)))
-			e.cursor.line = e.cursor.line.prev
-		}
-	} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-		if ebiten.IsKeyPressed(ebiten.KeyMetaLeft) {
-			i := 1
-			xSlotsCounter := GetScreenInfo().xSlots
-			for e.cursor.line.next != nil && i < xSlotsCounter {
-				i++
-				e.cursor.line = e.cursor.line.next
-			}
-		}
-		if e.cursor.line.next != nil {
-			e.cursor.x = int(math.Min(float64(e.cursor.x), float64(len(e.cursor.line.next.values)-1)))
-			e.cursor.line = e.cursor.line.next
-		}
 	}
 
 	// Keys which are valid input
 	for i := 0; i < int(ebiten.KeyMax); i++ {
 		key := ebiten.Key(i)
 		if inpututil.IsKeyJustPressed(key) {
-			shift := ebiten.IsKeyPressed(ebiten.KeyShift)
 			keyRune, printable := KeyToRune(key, shift)
 
 			// Skip unprintable keys (like Enter/Esc)
@@ -379,6 +478,79 @@ func (e *Editor) Update() error {
 		}
 	}
 	return nil
+}
+
+func (e *Editor) SelectAll() {
+	e.cursor.line = e.start
+	e.HighlightLine()
+
+	for e.cursor.line.next != nil {
+		e.cursor.line = e.cursor.line.next
+		e.cursor.x = len(e.cursor.line.values) - 1
+		e.HighlightLine()
+	}
+}
+
+func (e *Editor) DeletePrevious() {
+	// Instead of allowing an empty document, "clear it" by writing a new line character
+	if e.cursor.line == e.start && len(e.cursor.line.values) == 1 {
+		e.cursor.line.values = []rune{'\n'}
+		e.cursor.FixPosition()
+		return
+	}
+
+	if e.cursor.x == 0 {
+		if e.cursor.line.prev != nil {
+			e.cursor.x = len(e.cursor.line.prev.values) - 1
+			e.cursor.line.prev.values = e.cursor.line.prev.values[:len(e.cursor.line.prev.values)-1]
+			e.cursor.line.prev.values = append(e.cursor.line.prev.values, e.cursor.line.values...)
+			e.cursor.line.prev.next = e.cursor.line.next
+			if e.cursor.line.next != nil {
+				e.cursor.line.next.prev = e.cursor.line.prev
+			}
+			e.cursor.line = e.cursor.line.prev
+		}
+	} else {
+		e.cursor.x--
+		e.cursor.line.values = append(e.cursor.line.values[:e.cursor.x], e.cursor.line.values[e.cursor.x+1:]...)
+	}
+}
+
+func (e *Editor) GetHighlightedRunes() []rune {
+	copyRunes := make([]rune, 0)
+	curLine := e.start
+	for curLine != nil {
+		if highlightedLine, ok := e.highlighted[curLine]; ok {
+			highlightedIndexes := make([]int, 0)
+			for index := range highlightedLine {
+				highlightedIndexes = append(highlightedIndexes, index)
+			}
+			sort.Ints(highlightedIndexes)
+			for _, i := range highlightedIndexes {
+				copyRunes = append(copyRunes, curLine.values[i])
+			}
+		}
+		curLine = curLine.next
+	}
+	return copyRunes
+}
+
+func (e *Editor) HighlightLine() {
+	for x := range e.cursor.line.values {
+		e.Highlight(e.cursor.line, x)
+	}
+}
+
+func (e *Editor) HighlightLineToRight() {
+	for x := e.cursor.x; x < len(e.cursor.line.values); x++ {
+		e.Highlight(e.cursor.line, x)
+	}
+}
+
+func (e *Editor) HighlightLineToLeft() {
+	for x := e.cursor.x - 1; x > -1; x-- {
+		e.Highlight(e.cursor.line, x)
+	}
 }
 
 func (e *Editor) GetAllRunes() []rune {
@@ -450,45 +622,47 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 
 	// Find the screen chunk to render
 	lineNum := e.GetLineNumber() - 1
-	screenChunksToSkip := lineNum / screenInfo.xSlots
-	for i := 0; i < screenChunksToSkip*screenInfo.xSlots; i++ {
+	screenChunksToSkip := lineNum / screenInfo.lineSlots
+	for i := 0; i < screenChunksToSkip*screenInfo.lineSlots; i++ {
 		// Skip to that screen chunk
 		curLine = curLine.next
 	}
 
 	for curLine != nil {
 		// Don't render outside the line area
-		if y == screenInfo.xSlots {
+		if y == screenInfo.lineSlots {
 			break
 		}
 
-		// Handle each line
-		x := 0
-		xOverSpilled := false
-		for _, char := range curLine.values {
+		// Handle each line (only render the visible section)
+		xStart := 0
+		charactersPerScreen := int((float64(screenInfo.xLayout) - (screenInfo.xPadding * 2)) / float64(xUnit))
+		if e.cursor.line == curLine && e.cursor.x > charactersPerScreen {
+			xStart = ((e.cursor.x / charactersPerScreen) * charactersPerScreen) + 1
+		}
+
+		for x, char := range curLine.values[xStart:] {
+			// `x` is the render location
+			// `lineIndex` is the line position
+			lineIndex := x + xStart
+
 			opts := &ebiten.DrawImageOptions{}
 
-			// Render cursor
-			if e.cursor.line == curLine && x == e.cursor.x {
-				// If we're about to render off the edge of the screen
-				// it means we're trying to view a very long line.
-				// Clear the current line and start from zero (hiding everything to the left)
-				if float64(x*xUnit)+screenInfo.xPadding >= float64(screenInfo.xLayout) {
-					if xOverSpilled {
-						// Only clear the current line once, otherwise stop rendering
-						// otherwise we'll get visual bugs
-						break
-					}
-					x = 0
-					xOverSpilled = true
-					ebitenutil.DrawRect(screen, 0, float64(y*yUnit)+screenInfo.yPadding, float64(screenInfo.xLayout), float64(yUnit), color.RGBA{
-						255, 255, 255, 255,
+			// Render highlighting (if any)
+			if highlight, ok := e.highlighted[curLine]; ok {
+				if _, ok := highlight[lineIndex]; ok {
+					// Draw blue highlight background
+					ebitenutil.DrawRect(screen, float64(x*xUnit)+screenInfo.xPadding, float64(y*yUnit)+screenInfo.yPadding, float64(xUnit), float64(yUnit), color.RGBA{
+						0, 0, 200, 70,
 					})
 				}
+			}
 
-				// Draw grey cursor background
+			// Render cursor
+			if e.cursor.line == curLine && lineIndex == e.cursor.x {
+				// Draw gray cursor background
 				ebitenutil.DrawRect(screen, float64(x*xUnit)+screenInfo.xPadding, float64(y*yUnit)+screenInfo.yPadding, float64(xUnit), float64(yUnit), color.RGBA{
-					0, 0, 0, 100,
+					0, 0, 0, 90,
 				})
 			}
 
@@ -505,7 +679,6 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 					screen.DrawImage(fontImage, opts)
 				}
 			}
-			x++
 		}
 		curLine = curLine.next
 		y++
