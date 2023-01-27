@@ -109,32 +109,32 @@ type Editor struct {
 	highlighted map[*Line]map[int]bool
 }
 
-func (e *Editor) Highlight(line *Line, x int) {
-	if _, ok := e.highlighted[line]; ok {
-		e.highlighted[line][x] = true
-	} else {
-		e.highlighted[line] = map[int]bool{x: true}
-	}
-}
-
 func (e *Editor) DeleteHighlighted() {
 	highlightCount := 0
-	endOfHighlightLine := e.start
-	endOfHighlightLineX := 0
+	lastHighlightedLine := e.start
+	lastHighlightedX := 0
 	curLine := e.start
 	for curLine != nil {
 		if lineWithHighlights, ok := e.highlighted[curLine]; ok {
-			endOfHighlightLine = curLine
-			endOfHighlightLineX = 0
+			lastHighlightedLine = curLine
+			lastHighlightedX = 0
 			for index := range lineWithHighlights {
-				endOfHighlightLineX = int(math.Max(float64(index), float64(endOfHighlightLineX)))
+				lastHighlightedX = int(math.Max(float64(index), float64(lastHighlightedX)))
 				highlightCount++
 			}
 		}
 		curLine = curLine.next
 	}
-	e.cursor.line = endOfHighlightLine
-	e.cursor.x = endOfHighlightLineX + 1
+	e.cursor.line = lastHighlightedLine
+	e.cursor.x = lastHighlightedX + 1
+
+	// When a single new line character is highlighted
+	// we need to start deleting from the start of the
+	// next line so we can resue existing deletion logic
+	if e.cursor.x == len(e.cursor.line.values) && e.cursor.line.next != nil {
+		e.cursor.line = e.cursor.line.next
+		e.cursor.x = 0
+	}
 
 	for i := 0; i < highlightCount; i++ {
 		e.DeletePrevious()
@@ -231,7 +231,7 @@ func (e *Editor) HandleRune(r rune) {
 }
 
 func (e *Editor) Update() error {
-	// Log key number
+	// // Log key number
 	// for i := 0; i < int(ebiten.KeyMax); i++ {
 	// 	if inpututil.IsKeyJustPressed(ebiten.Key(i)) {
 	// 		println(i)
@@ -324,7 +324,7 @@ func (e *Editor) Update() error {
 
 	if right {
 		if command {
-			for e.cursor.x < len(e.cursor.line.values)-2 {
+			for e.cursor.x < len(e.cursor.line.values)-1 {
 				if shift {
 					e.Highlight(e.cursor.line, e.cursor.x)
 				}
@@ -380,7 +380,7 @@ func (e *Editor) Update() error {
 				e.HighlightLineToRight()
 			}
 		} else {
-			for x := e.cursor.x; shift && x >= 0; x-- {
+			for x := e.cursor.x - 1; shift && x >= 0; x-- {
 				e.Highlight(e.cursor.line, x)
 			}
 			if e.cursor.line.prev != nil {
@@ -553,6 +553,14 @@ func (e *Editor) HighlightLineToLeft() {
 	}
 }
 
+func (e *Editor) Highlight(line *Line, x int) {
+	if _, ok := e.highlighted[line]; ok {
+		e.highlighted[line][x] = true
+	} else {
+		e.highlighted[line] = map[int]bool{x: true}
+	}
+}
+
 func (e *Editor) GetAllRunes() []rune {
 	all := make([]rune, 0)
 	cur := e.start
@@ -563,11 +571,15 @@ func (e *Editor) GetAllRunes() []rune {
 	return all
 }
 
-// Get the cursor's current line number (not zero indexed)
+// Get the cursor's current line number
 func (e *Editor) GetLineNumber() int {
+	return e.GetLineNumberFromLine(e.cursor.line)
+}
+
+func (e *Editor) GetLineNumberFromLine(line *Line) int {
 	cur := e.start
 	count := 1
-	for cur != e.cursor.line {
+	for cur != line && cur != e.cursor.line {
 		count++
 		cur = cur.next
 	}
