@@ -230,7 +230,7 @@ func (e *Editor) Search() {
 	for curLine != nil {
 		// Hold onto your hats, we're about to run some slooow code!
 		for index, r := range curLine.values {
-			if unicode.ToLower(r) == unicode.ToLower(e.searchTerm[0]) {
+			if unicode.ToLower(r) == unicode.ToLower(e.searchTerm[0]) && index+len(e.searchTerm) < len(curLine.values) {
 				if runeSliceEqualityCaseInsensitive(e.searchTerm, curLine.values[index:index+len(e.searchTerm)]) {
 
 					// Store search highlights
@@ -341,8 +341,11 @@ func (e *Editor) Update() error {
 
 	// Enter search mode
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyF) {
-		e.SearchMode()
-		e.searchTerm = make([]rune, 0)
+		if e.mode == SEARCH_MODE {
+			e.EditMode()
+		} else {
+			e.SearchMode()
+		}
 		return nil
 	}
 
@@ -448,8 +451,39 @@ func (e *Editor) Update() error {
 			e.ResetHighlight()
 		}
 
+		// Option scanning finds the next emptyType after hitting a non-emptyType
+		// TODO: make this a function that matches non alphas?
+		emptyTypes := map[rune]bool{' ': true, '.': true}
+
 		if right {
-			if command {
+			if option {
+				// Find the next non-empty
+				for e.cursor.x < len(e.cursor.line.values)-2 {
+					if shift {
+						e.Highlight(e.cursor.line, e.cursor.x)
+					}
+					e.cursor.x++
+					if ok := emptyTypes[e.cursor.line.values[e.cursor.x]]; !ok {
+						break
+					}
+				}
+
+				// Find the next empty
+				for e.cursor.x < len(e.cursor.line.values)-2 {
+					if ok := emptyTypes[e.cursor.line.values[e.cursor.x]]; !ok {
+						if shift {
+							e.Highlight(e.cursor.line, e.cursor.x)
+						}
+					} else {
+						e.cursor.x++
+						break
+					}
+					e.cursor.x++
+					if shift {
+						e.Highlight(e.cursor.line, e.cursor.x)
+					}
+				}
+			} else if command {
 				for e.cursor.x < len(e.cursor.line.values)-1 {
 					if shift {
 						e.Highlight(e.cursor.line, e.cursor.x)
@@ -471,7 +505,33 @@ func (e *Editor) Update() error {
 				}
 			}
 		} else if left {
-			if command {
+			if option {
+				// Find the next non-empty
+				for e.cursor.x > 0 {
+					e.cursor.x--
+					if shift {
+						e.Highlight(e.cursor.line, e.cursor.x)
+					}
+					if ok := emptyTypes[e.cursor.line.values[e.cursor.x]]; !ok {
+						break
+					}
+				}
+
+				// Find the next empty
+				for e.cursor.x > 0 {
+					if ok := emptyTypes[e.cursor.line.values[e.cursor.x-1]]; !ok {
+						if shift {
+							e.Highlight(e.cursor.line, e.cursor.x)
+						}
+					} else {
+						break
+					}
+					e.cursor.x--
+					if shift {
+						e.Highlight(e.cursor.line, e.cursor.x)
+					}
+				}
+			} else if command {
 				for e.cursor.x > 0 {
 					e.cursor.x--
 					if shift {
@@ -510,7 +570,9 @@ func (e *Editor) Update() error {
 					}
 					e.cursor.line = e.cursor.line.prev
 					e.cursor.x = 0
-					e.HighlightLineToRight()
+					if shift {
+						e.HighlightLineToRight()
+					}
 				}
 			} else {
 				for x := e.cursor.x - 1; shift && x >= 0; x-- {
@@ -766,7 +828,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 	})
 
 	// Handle bottom bar
-	botBar := []rune(fmt.Sprintf("(x cut line, v paste, s save, q quit, c copy line) [%v:%v:%v] ", e.GetLineNumber(), e.cursor.x+1, e.cursor.line.values[e.cursor.x]))
+	botBar := []rune(fmt.Sprintf("(x)cut (c)opy (v)paste (s)ave (q)uit (f)search [%v:%v:%v] ", e.GetLineNumber(), e.cursor.x+1, e.cursor.line.values[e.cursor.x]))
 	for x, char := range botBar {
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(float64(x*xUnit)+screenInfo.xPadding, float64(screenInfo.yLayout-yUnit))

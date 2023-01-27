@@ -7,7 +7,7 @@ A text editor for macOS. Built using the [Ebitengine](https://github.com/hajimeh
 
 It's a little bit like `nano`.
 
-![A screenshot of the editor running. It looks like nano. It has a text file called "A Bird, came down the Walk" opened.](https://github.com/healeycodes/noter/blob/main/noter.png)
+![A screenshot of the editor running. It looks like nano. It has a text file called "A Bird, came down the Walk" opened.](https://github.com/healeycodes/noter/blob/main/preview.png)
 
 ## Shortcuts
 
@@ -16,6 +16,7 @@ Highlight with (shift + arrow key).
 Swap lines with option + (up)/(down).
 
 Command +
+- (f) search
 - (a) select all
 - (c) copy
 - (x) cut
