@@ -11,17 +11,17 @@ It's a little bit like `nano`.
 
 ## Shortcuts
 
-Highlight with shift+arrow key.
+Highlight with (shift + arrow key).
 
 Command +
-- a: select all
-- c: copy
-- x: cut
-- v: paste
-- x: save
-- q: quit without saving
-- left/right: skips to start/end of line
-- up/down: skip to start/end of document
+- (a) select all
+- (c) copy
+- (x) cut
+- (v) paste
+- (x) save
+- (q) quit without saving
+- (left)/(right) skips to start/end of line
+- (up)/(down) skip to start/end of document
 
 ## Development
 
