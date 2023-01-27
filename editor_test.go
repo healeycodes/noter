@@ -61,3 +61,60 @@ func TestGetAllRunes(t *testing.T) {
 		t.Fatalf(`Expected allRunes to return document runes, got: %v`, allRunes)
 	}
 }
+
+func TestDeleteRune(t *testing.T) {
+	line1 := &Line{values: []rune{'a', '\n'}}
+	editor := &Editor{
+		start: line1,
+		cursor: &Cursor{
+			line1,
+			1,
+		},
+	}
+
+	editor.DeletePrevious()
+	if len(line1.values) != 0 && line1.values[0] != '\n' {
+		t.Fatalf("Delete operation did not work correctly, got: %v", line1.values)
+	}
+}
+
+func TestDeleteLine(t *testing.T) {
+	line1 := &Line{values: []rune{'a', '\n'}}
+	line2 := &Line{values: []rune{'b', '\n'}}
+	line1.next = line2
+	line2.prev = line1
+	editor := &Editor{
+		start: line1,
+		cursor: &Cursor{
+			line2,
+			1,
+		},
+	}
+
+	editor.DeletePrevious()
+	editor.DeletePrevious()
+	if len(line1.values) != 0 && line1.next != nil {
+		t.Fatalf("Delete operation did not work correctly, got: %v, %v", line1.values, line1.next)
+	}
+}
+
+func TestHighlightLineAndGetHighlightedRunes(t *testing.T) {
+	line1 := &Line{values: []rune{'a', '\n'}}
+	line2 := &Line{values: []rune{'b', '\n'}}
+	line1.next = line2
+	line2.prev = line1
+	editor := &Editor{
+		start: line1,
+		cursor: &Cursor{
+			line2,
+			1,
+		},
+		// This would normally happen in editor.Load()
+		highlighted: make(map[*Line]map[int]bool),
+	}
+
+	editor.HighlightLine()
+	if reflect.DeepEqual(editor.GetHighlightedRunes(), []rune{'b', '\n'}) != true {
+		t.Fatalf(`Expected GetHighlightedRunes to return line2's runes, got: %v`, editor.GetHighlightedRunes())
+	}
+}
