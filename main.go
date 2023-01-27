@@ -217,7 +217,7 @@ func (e *Editor) Load() error {
 }
 
 func (e *Editor) Search() {
-	// Always search highlights (even for empty searches)
+	// Always reset search highlights (for empty searches)
 	e.searchHighlighted = make(map[*Line]map[int]bool)
 
 	if len(e.searchTerm) == 0 {
@@ -452,22 +452,11 @@ func (e *Editor) Update() error {
 		}
 
 		// Option scanning finds the next emptyType after hitting a non-emptyType
-		// TODO: make this a function that matches non alphas?
-		emptyTypes := map[rune]bool{' ': true, '.': true}
+		// TODO: the characters that we filter for needs improving
+		emptyTypes := map[rune]bool{' ': true, '.': true, ',': true}
 
 		if right {
 			if option {
-				// Find the next non-empty
-				for e.cursor.x < len(e.cursor.line.values)-2 {
-					if shift {
-						e.Highlight(e.cursor.line, e.cursor.x)
-					}
-					e.cursor.x++
-					if ok := emptyTypes[e.cursor.line.values[e.cursor.x]]; !ok {
-						break
-					}
-				}
-
 				// Find the next empty
 				for e.cursor.x < len(e.cursor.line.values)-2 {
 					if ok := emptyTypes[e.cursor.line.values[e.cursor.x]]; !ok {
@@ -475,7 +464,6 @@ func (e *Editor) Update() error {
 							e.Highlight(e.cursor.line, e.cursor.x)
 						}
 					} else {
-						e.cursor.x++
 						break
 					}
 					e.cursor.x++
@@ -638,8 +626,14 @@ func (e *Editor) Update() error {
 		return nil
 	}
 
-	// Tab (just insert four spaces)
+	// Tab
 	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+		if e.mode == SEARCH_MODE {
+			e.searchIndex++
+			e.Search()
+			return nil
+		}
+		// Just insert four spaces
 		for i := 0; i < 4; i++ {
 			e.HandleRune(' ')
 		}
