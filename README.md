@@ -8,9 +8,12 @@ It's a little bit like `nano`.
 
 ## Shortcuts
 
+Highlight with shift+arrow key.
+
 Command +
-- c: copy line
-- x: cut line
+- a: select all
+- c: copy
+- x: cut
 - v: paste
 - x: save
 - q: quit without saving
