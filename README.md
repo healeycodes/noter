@@ -13,6 +13,8 @@ It's a little bit like `nano`.
 
 Highlight with (shift + arrow key).
 
+Swap lines with option + (up)/(down).
+
 Command +
 - (a) select all
 - (c) copy

@@ -130,7 +130,7 @@ func (e *Editor) DeleteHighlighted() {
 
 	// When a single new line character is highlighted
 	// we need to start deleting from the start of the
-	// next line so we can resue existing deletion logic
+	// next line so we can re-use existing deletion logic
 	if e.cursor.x == len(e.cursor.line.values) && e.cursor.line.next != nil {
 		e.cursor.line = e.cursor.line.next
 		e.cursor.x = 0
@@ -242,6 +242,7 @@ func (e *Editor) Update() error {
 	// Modifiers
 	command := ebiten.IsKeyPressed(ebiten.KeyMeta)
 	shift := ebiten.IsKeyPressed(ebiten.KeyShift)
+	option := ebiten.IsKeyPressed(ebiten.KeyAlt)
 
 	// Quit
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyQ) {
@@ -367,7 +368,14 @@ func (e *Editor) Update() error {
 			}
 		}
 	} else if up {
-		if command {
+		if option {
+			if e.cursor.line.prev != nil {
+				tempValues := e.cursor.line.values
+				e.cursor.line.values = e.cursor.line.prev.values
+				e.cursor.line.prev.values = tempValues
+				e.cursor.line = e.cursor.line.prev
+			}
+		} else if command {
 			if shift {
 				e.HighlightLineToLeft()
 			}
@@ -394,7 +402,13 @@ func (e *Editor) Update() error {
 			e.cursor.FixPosition()
 		}
 	} else if down {
-		if command {
+		if option {
+			if e.cursor.line.next != nil {
+				tempValues := e.cursor.line.values
+				e.cursor.line.values = e.cursor.line.next.values
+				e.cursor.line.next.values = tempValues
+			}
+		} else if command {
 			for e.cursor.line.next != nil {
 				if shift {
 					e.HighlightLineToRight()
