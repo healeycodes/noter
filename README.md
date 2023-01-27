@@ -11,14 +11,17 @@ It's a little bit like `nano`.
 
 ## Shortcuts
 
+Highlight with shift+arrow key.
+
 Command +
-- c: copy line
-- x: cut line
+- a: select all
+- c: copy
+- x: cut
 - v: paste
 - x: save
 - q: quit without saving
 - left/right: skips to start/end of line
-- up/down: is the same as page up/page down
+- up/down: skip to start/end of document
 
 ## Development
 
@@ -38,6 +41,5 @@ Run the editor `./noter "A Bird, came down the Walk.txt"`
 
 ## Roadmap
 
-- Text highlighting (and more fine grained cut/copy/paste)
 - More tests
 - Search?
