@@ -120,6 +120,7 @@ type Editor struct {
 }
 
 func (e *Editor) SearchMode() {
+	e.ResetHighlight()
 	e.mode = SEARCH_MODE
 	e.searchHighlighted = make(map[*Line]map[int]bool)
 }
