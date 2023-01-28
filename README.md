@@ -45,7 +45,6 @@ Run the editor `./noter "A Bird, came down the Walk.txt"`
 
 ## Roadmap
 
-- Generic undo
 - Fix swap down and up on first line and then undo bug
 - More tests
 - Search?

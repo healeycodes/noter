@@ -117,16 +117,12 @@ type Editor struct {
 	modified          bool
 	highlighted       map[*Line]map[int]bool
 	searchHighlighted map[*Line]map[int]bool
-	undoState         []func()
+	undoState         []func() bool
 }
 
-func (e *Editor) SearchMode() {
-	// Usually, the cursor will move during a search
-	// so when the user starts undoing, being by
-	// getting the cursor in the correct position
-	// for mutations.
-	e.StoreUndoAction(e.ReturnToCursor(e.cursor.line, e.cursor.x))
+var noop = func() bool { return false }
 
+func (e *Editor) SearchMode() {
 	e.ResetHighlight()
 	e.mode = SEARCH_MODE
 	e.searchHighlighted = make(map[*Line]map[int]bool)
@@ -138,7 +134,7 @@ func (e *Editor) EditMode() {
 	e.searchHighlighted = make(map[*Line]map[int]bool)
 }
 
-func (e *Editor) DeleteHighlighted() {
+func (e *Editor) DeleteHighlighted() func() bool {
 	highlightCount := 0
 	lastHighlightedLine := e.start
 	lastHighlightedX := 0
@@ -166,16 +162,21 @@ func (e *Editor) DeleteHighlighted() {
 	}
 
 	highlightedRunes := e.GetHighlightedRunes()
-	e.StoreUndoAction(func() {
-		for _, r := range highlightedRunes {
-			e.handleRune(r)
-		}
-	})
 
 	for i := 0; i < highlightCount; i++ {
 		e.deletePrevious()
 	}
-	e.cursor.FixPosition()
+
+	lineNum := e.GetLineNumber()
+	curX := e.cursor.x
+
+	return func() bool {
+		e.MoveCursor(lineNum, curX)
+		for _, r := range highlightedRunes {
+			e.handleRune(r)
+		}
+		return true
+	}
 }
 
 func (e *Editor) ResetHighlight() {
@@ -198,7 +199,7 @@ func (e *Editor) Load() error {
 	source := string(b)
 
 	e.EditMode()
-	e.undoState = make([]func(), 0)
+	e.undoState = make([]func() bool, 0)
 	e.searchTerm = make([]rune, 0)
 	e.highlighted = make(map[*Line]map[int]bool)
 	e.start = &Line{values: make([]rune, 0)}
@@ -287,22 +288,44 @@ func (e *Editor) Search() {
 	e.searchIndex = 0
 }
 
-func (e *Editor) HandleRuneSingle(r rune) {
+func (e *Editor) HandleRuneSingle(r rune) func() bool {
+	undoDeleteHighlighted := func() bool { return false }
+	if len(e.highlighted) != 0 {
+		undoDeleteHighlighted = e.DeleteHighlighted()
+	}
+
 	e.handleRune(r)
-	e.StoreUndoAction(func() {
+
+	lineNum := e.GetLineNumber()
+	curX := e.cursor.x
+	return func() bool {
+		e.MoveCursor(lineNum, curX)
 		e.deletePrevious()
-	})
+		undoDeleteHighlighted()
+		return true
+	}
 }
 
-func (e *Editor) HandleRuneMulti(rs []rune) {
+func (e *Editor) HandleRuneMulti(rs []rune) func() bool {
+	undoDeleteHighlighted := func() bool { return false }
+	if len(e.highlighted) != 0 {
+		undoDeleteHighlighted = e.DeleteHighlighted()
+	}
+
 	for _, r := range rs {
 		e.handleRune(r)
 	}
-	e.StoreUndoAction(func() {
+
+	lineNum := e.GetLineNumber()
+	curX := e.cursor.x
+	return func() bool {
+		e.MoveCursor(lineNum, curX)
 		for i := 0; i < len(rs); i++ {
 			e.deletePrevious()
 		}
-	})
+		undoDeleteHighlighted()
+		return true
+	}
 }
 
 func (e *Editor) handleRune(r rune) {
@@ -313,7 +336,6 @@ func (e *Editor) handleRune(r rune) {
 	}
 
 	if len(e.highlighted) != 0 {
-		e.DeleteHighlighted()
 		e.ResetHighlight()
 	}
 
@@ -406,9 +428,13 @@ func (e *Editor) Update() error {
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyZ) {
 		e.EditMode()
 		e.ResetHighlight()
-		if len(e.undoState) > 0 {
-			e.undoState[len(e.undoState)-1]()
+
+		for len(e.undoState) > 0 {
+			notNoop := e.undoState[len(e.undoState)-1]()
 			e.undoState = e.undoState[:len(e.undoState)-1]
+			if notNoop {
+				break
+			}
 		}
 		return nil
 	}
@@ -451,7 +477,7 @@ func (e *Editor) Update() error {
 		for _, r := range string(pasteBytes) {
 			rs = append(rs, r)
 		}
-		e.HandleRuneMulti(rs)
+		e.StoreUndoAction(e.HandleRuneMulti(rs))
 		e.modified = true
 		return nil
 	}
@@ -468,7 +494,7 @@ func (e *Editor) Update() error {
 			log.Fatalln(err)
 		}
 
-		e.DeleteHighlighted()
+		e.StoreUndoAction(e.DeleteHighlighted())
 		e.ResetHighlight()
 
 		e.modified = true
@@ -492,8 +518,6 @@ func (e *Editor) Update() error {
 	// Handle movement
 	if right || left || up || down {
 		e.EditMode()
-		startingLine := e.cursor.line
-		startingX := e.cursor.x
 
 		// Clear up old highlighting
 		if !shift {
@@ -591,10 +615,7 @@ func (e *Editor) Update() error {
 			}
 		} else if up {
 			if option {
-				e.SwapUp()
-				e.StoreUndoAction(func() {
-					e.SwapDown()
-				})
+				e.StoreUndoAction(e.SwapUp())
 			} else if command {
 				if shift {
 					e.HighlightLineToLeft()
@@ -625,10 +646,7 @@ func (e *Editor) Update() error {
 			}
 		} else if down {
 			if option {
-				e.SwapDown()
-				e.StoreUndoAction(func() {
-					e.SwapUp()
-				})
+				e.StoreUndoAction(e.SwapDown())
 			} else if command {
 				for e.cursor.line.next != nil {
 					if shift {
@@ -660,9 +678,6 @@ func (e *Editor) Update() error {
 			}
 		}
 
-		if !option && (e.cursor.line != startingLine || e.cursor.x != startingX) {
-			e.StoreUndoAction(e.ReturnToCursor(startingLine, startingX))
-		}
 		return nil
 	}
 
@@ -672,7 +687,7 @@ func (e *Editor) Update() error {
 			e.searchIndex++
 			e.Search()
 		} else {
-			e.HandleRuneSingle('\n')
+			e.StoreUndoAction(e.HandleRuneSingle('\n'))
 		}
 		return nil
 	}
@@ -686,7 +701,7 @@ func (e *Editor) Update() error {
 		}
 		// Just insert four spaces
 		for i := 0; i < 4; i++ {
-			e.HandleRuneSingle(' ')
+			e.StoreUndoAction(e.HandleRuneSingle(' '))
 		}
 		return nil
 	}
@@ -702,10 +717,10 @@ func (e *Editor) Update() error {
 		}
 		// Delete all highlighted content
 		if len(e.highlighted) != 0 {
-			e.DeleteHighlighted()
+			e.StoreUndoAction(e.DeleteHighlighted())
 		} else {
 			// Or..
-			e.DeleteSinglePrevious()
+			e.StoreUndoAction(e.DeleteSinglePrevious())
 		}
 
 		e.ResetHighlight()
@@ -729,13 +744,13 @@ func (e *Editor) Update() error {
 				continue
 			}
 
-			e.HandleRuneSingle(keyRune)
+			e.StoreUndoAction(e.HandleRuneSingle(keyRune))
 		}
 	}
 	return nil
 }
 
-func (e *Editor) StoreUndoAction(fun func()) {
+func (e *Editor) StoreUndoAction(fun func() bool) {
 	if e.mode == EDIT_MODE {
 		e.undoState = append(e.undoState, fun)
 	}
@@ -754,29 +769,53 @@ func (e *Editor) ReturnToCursor(line *Line, startingX int) func() {
 	}
 }
 
-func (e *Editor) SwapDown() {
+func (e *Editor) SwapDown() func() bool {
 	if e.cursor.line.next != nil {
 		tempValues := e.cursor.line.values
 		e.cursor.line.values = e.cursor.line.next.values
 		e.cursor.line.next.values = tempValues
 		e.cursor.line = e.cursor.line.next
 		e.cursor.FixPosition()
+
+		lineNum := e.GetLineNumber()
+		curX := e.cursor.x
+		return func() bool {
+			e.MoveCursor(lineNum, curX)
+			tempValues := e.cursor.line.values
+			e.cursor.line.values = e.cursor.line.prev.values
+			e.cursor.line.prev.values = tempValues
+			e.cursor.line = e.cursor.line.prev
+			e.cursor.FixPosition()
+			return true
+		}
 	}
+	return noop
 }
 
-func (e *Editor) SwapUp() {
+func (e *Editor) SwapUp() func() bool {
 	if e.cursor.line.prev != nil {
 		tempValues := e.cursor.line.values
 		e.cursor.line.values = e.cursor.line.prev.values
 		e.cursor.line.prev.values = tempValues
 		e.cursor.line = e.cursor.line.prev
 		e.cursor.FixPosition()
+
+		lineNum := e.GetLineNumber()
+		curX := e.cursor.x
+		return func() bool {
+			e.MoveCursor(lineNum, curX)
+			tempValues := e.cursor.line.values
+			e.cursor.line.values = e.cursor.line.next.values
+			e.cursor.line.next.values = tempValues
+			e.cursor.line = e.cursor.line.next
+			e.cursor.FixPosition()
+			return true
+		}
 	}
+	return noop
 }
 
 func (e *Editor) SelectAll() {
-	e.StoreUndoAction(e.ReturnToCursor(e.cursor.line, e.cursor.x))
-
 	e.cursor.line = e.start
 	e.HighlightLine()
 
@@ -787,22 +826,31 @@ func (e *Editor) SelectAll() {
 	}
 }
 
-func (e *Editor) DeleteSinglePrevious() {
+func (e *Editor) DeleteSinglePrevious() func() bool {
 	if e.cursor.line == e.start && e.cursor.x == 0 {
-		return
+		return noop
 	}
 
 	if e.cursor.x-1 < 0 {
-		e.StoreUndoAction(func() {
+		e.deletePrevious()
+		lineNum := e.GetLineNumber()
+		curX := e.cursor.x
+		return func() bool {
+			e.MoveCursor(lineNum, curX)
 			e.handleRune('\n')
-		})
+			return true
+		}
 	} else {
 		curRune := e.cursor.line.values[e.cursor.x-1]
-		e.StoreUndoAction(func() {
+		e.deletePrevious()
+		lineNum := e.GetLineNumber()
+		curX := e.cursor.x
+		return func() bool {
+			e.MoveCursor(lineNum, curX)
 			e.handleRune(curRune)
-		})
+			return true
+		}
 	}
-	e.deletePrevious()
 }
 
 func (e *Editor) deletePrevious() {
@@ -885,9 +933,28 @@ func (e *Editor) GetAllRunes() []rune {
 	return all
 }
 
+// MoveCursor moves the cursor to the `line` from the top
+// if `x` is `-1` then the cursor is moved to the final element
+func (e *Editor) MoveCursor(line int, x int) {
+	e.cursor.line = e.start
+	i := 0
+	for i != line {
+		if e.cursor.line.next == nil {
+			log.Fatalf("attempted illegal move to %v %v", line, x)
+		}
+		e.cursor.line = e.cursor.line.next
+		i++
+	}
+	if x == -1 {
+		e.cursor.x = len(e.cursor.line.values) - 1
+	} else {
+		e.cursor.x = x
+	}
+}
+
 // Get the cursor's current line number
 func (e *Editor) GetLineNumber() int {
-	return e.GetLineNumberFromLine(e.cursor.line)
+	return e.GetLineNumberFromLine(e.cursor.line) - 1
 }
 
 func (e *Editor) GetLineNumberFromLine(line *Line) int {
@@ -932,7 +999,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 	})
 
 	// Handle bottom bar
-	botBar := []rune(fmt.Sprintf("(x)cut (c)opy (v)paste (s)ave (q)uit (f)search [%v:%v:%v] ", e.GetLineNumber(), e.cursor.x+1, e.cursor.line.values[e.cursor.x]))
+	botBar := []rune(fmt.Sprintf("(x)cut (c)opy (v)paste (s)ave (q)uit (f)search [%v:%v:%v] ", e.GetLineNumber()+1, e.cursor.x+1, e.cursor.line.values[e.cursor.x]))
 	for x, char := range botBar {
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(float64(x*xUnit)+screenInfo.xPadding, float64(screenInfo.yLayout-yUnit))
@@ -953,7 +1020,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 	y := 0
 
 	// Find the screen chunk to render
-	lineNum := e.GetLineNumber() - 1
+	lineNum := e.GetLineNumber()
 	screenChunksToSkip := lineNum / screenInfo.lineSlots
 	for i := 0; i < screenChunksToSkip*screenInfo.lineSlots; i++ {
 		// Skip to that screen chunk
