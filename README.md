@@ -45,6 +45,5 @@ Run the editor `./noter "A Bird, came down the Walk.txt"`
 
 ## Roadmap
 
-- Fix swap down and up on first line and then undo bug
 - More tests
-- Search?
+- Reo?
