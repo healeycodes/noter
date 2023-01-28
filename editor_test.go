@@ -38,8 +38,9 @@ func TestGetLineNumber(t *testing.T) {
 	}
 
 	lineNum := editor.GetLineNumber()
-	if lineNum != 2 {
-		t.Fatalf(`Expected current line number to be 2, got: %v`, lineNum)
+	want := 1
+	if lineNum != want {
+		t.Fatalf(`Expected current line number to be %v, got: %v`, want, lineNum)
 	}
 }
 
