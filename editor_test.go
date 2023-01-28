@@ -72,7 +72,7 @@ func TestDeleteRune(t *testing.T) {
 		},
 	}
 
-	editor.DeletePrevious()
+	editor.DeleteSinglePrevious()
 	if len(line1.values) != 0 && line1.values[0] != '\n' {
 		t.Fatalf("Delete operation did not work correctly, got: %v", line1.values)
 	}
@@ -91,8 +91,8 @@ func TestDeleteLine(t *testing.T) {
 		},
 	}
 
-	editor.DeletePrevious()
-	editor.DeletePrevious()
+	editor.DeleteSinglePrevious()
+	editor.DeleteSinglePrevious()
 	if len(line1.values) != 0 && line1.next != nil {
 		t.Fatalf("Delete operation did not work correctly, got: %v, %v", line1.values, line1.next)
 	}

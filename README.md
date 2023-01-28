@@ -16,6 +16,7 @@ Highlight with (shift + arrow key).
 Swap lines with option + (up)/(down).
 
 Command +
+- (z) undo
 - (f) search
 - (a) select all
 - (c) copy
@@ -44,5 +45,7 @@ Run the editor `./noter "A Bird, came down the Walk.txt"`
 
 ## Roadmap
 
+- Generic undo
+- Fix swap down and up on first line and then undo bug
 - More tests
 - Search?
