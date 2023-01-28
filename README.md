@@ -16,6 +16,7 @@ Highlight with (shift + arrow key).
 Swap lines with option + (up)/(down).
 
 Command +
+- (z) undo
 - (f) search
 - (a) select all
 - (c) copy
@@ -45,4 +46,4 @@ Run the editor `./noter "A Bird, came down the Walk.txt"`
 ## Roadmap
 
 - More tests
-- Search?
+- Reo?

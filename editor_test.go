@@ -38,8 +38,9 @@ func TestGetLineNumber(t *testing.T) {
 	}
 
 	lineNum := editor.GetLineNumber()
-	if lineNum != 2 {
-		t.Fatalf(`Expected current line number to be 2, got: %v`, lineNum)
+	want := 1
+	if lineNum != want {
+		t.Fatalf(`Expected current line number to be %v, got: %v`, want, lineNum)
 	}
 }
 
@@ -72,7 +73,7 @@ func TestDeleteRune(t *testing.T) {
 		},
 	}
 
-	editor.DeletePrevious()
+	editor.DeleteSinglePrevious()
 	if len(line1.values) != 0 && line1.values[0] != '\n' {
 		t.Fatalf("Delete operation did not work correctly, got: %v", line1.values)
 	}
@@ -91,8 +92,8 @@ func TestDeleteLine(t *testing.T) {
 		},
 	}
 
-	editor.DeletePrevious()
-	editor.DeletePrevious()
+	editor.DeleteSinglePrevious()
+	editor.DeleteSinglePrevious()
 	if len(line1.values) != 0 && line1.next != nil {
 		t.Fatalf("Delete operation did not work correctly, got: %v, %v", line1.values, line1.next)
 	}
