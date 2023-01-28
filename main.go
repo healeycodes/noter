@@ -508,14 +508,14 @@ func (e *Editor) Update() error {
 			if option {
 				// Find the next empty
 				for e.cursor.x < len(e.cursor.line.values)-2 {
+					if shift {
+						e.Highlight(e.cursor.line, e.cursor.x)
+					}
+					e.cursor.x++
 					if ok := emptyTypes[e.cursor.line.values[e.cursor.x]]; !ok {
-						if shift {
-							e.Highlight(e.cursor.line, e.cursor.x)
-						}
 					} else {
 						break
 					}
-					e.cursor.x++
 					if shift {
 						e.Highlight(e.cursor.line, e.cursor.x)
 					}
