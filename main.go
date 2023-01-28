@@ -117,10 +117,12 @@ type Editor struct {
 	modified          bool
 	highlighted       map[*Line]map[int]bool
 	searchHighlighted map[*Line]map[int]bool
-	undoState         []func() bool
+	undoState         []func() UndoAction
 }
 
-var noop = func() bool { return false }
+type UndoAction bool
+
+var noop = func() UndoAction { return false }
 
 func (e *Editor) SearchMode() {
 	e.ResetHighlight()
@@ -134,7 +136,7 @@ func (e *Editor) EditMode() {
 	e.searchHighlighted = make(map[*Line]map[int]bool)
 }
 
-func (e *Editor) DeleteHighlighted() func() bool {
+func (e *Editor) DeleteHighlighted() func() UndoAction {
 	highlightCount := 0
 	lastHighlightedLine := e.start
 	lastHighlightedX := 0
@@ -170,7 +172,7 @@ func (e *Editor) DeleteHighlighted() func() bool {
 	lineNum := e.GetLineNumber()
 	curX := e.cursor.x
 
-	return func() bool {
+	return func() UndoAction {
 		e.MoveCursor(lineNum, curX)
 		for _, r := range highlightedRunes {
 			e.handleRune(r)
@@ -199,7 +201,7 @@ func (e *Editor) Load() error {
 	source := string(b)
 
 	e.EditMode()
-	e.undoState = make([]func() bool, 0)
+	e.undoState = make([]func() UndoAction, 0)
 	e.searchTerm = make([]rune, 0)
 	e.highlighted = make(map[*Line]map[int]bool)
 	e.start = &Line{values: make([]rune, 0)}
@@ -288,8 +290,8 @@ func (e *Editor) Search() {
 	e.searchIndex = 0
 }
 
-func (e *Editor) HandleRuneSingle(r rune) func() bool {
-	undoDeleteHighlighted := func() bool { return false }
+func (e *Editor) HandleRuneSingle(r rune) func() UndoAction {
+	undoDeleteHighlighted := func() UndoAction { return false }
 	if len(e.highlighted) != 0 {
 		undoDeleteHighlighted = e.DeleteHighlighted()
 	}
@@ -298,7 +300,7 @@ func (e *Editor) HandleRuneSingle(r rune) func() bool {
 
 	lineNum := e.GetLineNumber()
 	curX := e.cursor.x
-	return func() bool {
+	return func() UndoAction {
 		e.MoveCursor(lineNum, curX)
 		e.deletePrevious()
 		undoDeleteHighlighted()
@@ -306,8 +308,8 @@ func (e *Editor) HandleRuneSingle(r rune) func() bool {
 	}
 }
 
-func (e *Editor) HandleRuneMulti(rs []rune) func() bool {
-	undoDeleteHighlighted := func() bool { return false }
+func (e *Editor) HandleRuneMulti(rs []rune) func() UndoAction {
+	undoDeleteHighlighted := func() UndoAction { return false }
 	if len(e.highlighted) != 0 {
 		undoDeleteHighlighted = e.DeleteHighlighted()
 	}
@@ -318,7 +320,7 @@ func (e *Editor) HandleRuneMulti(rs []rune) func() bool {
 
 	lineNum := e.GetLineNumber()
 	curX := e.cursor.x
-	return func() bool {
+	return func() UndoAction {
 		e.MoveCursor(lineNum, curX)
 		for i := 0; i < len(rs); i++ {
 			e.deletePrevious()
@@ -750,7 +752,7 @@ func (e *Editor) Update() error {
 	return nil
 }
 
-func (e *Editor) StoreUndoAction(fun func() bool) {
+func (e *Editor) StoreUndoAction(fun func() UndoAction) {
 	if e.mode == EDIT_MODE {
 		e.undoState = append(e.undoState, fun)
 	}
@@ -769,7 +771,7 @@ func (e *Editor) ReturnToCursor(line *Line, startingX int) func() {
 	}
 }
 
-func (e *Editor) SwapDown() func() bool {
+func (e *Editor) SwapDown() func() UndoAction {
 	if e.cursor.line.next != nil {
 		tempValues := e.cursor.line.values
 		e.cursor.line.values = e.cursor.line.next.values
@@ -779,7 +781,7 @@ func (e *Editor) SwapDown() func() bool {
 
 		lineNum := e.GetLineNumber()
 		curX := e.cursor.x
-		return func() bool {
+		return func() UndoAction {
 			e.MoveCursor(lineNum, curX)
 			tempValues := e.cursor.line.values
 			e.cursor.line.values = e.cursor.line.prev.values
@@ -792,7 +794,7 @@ func (e *Editor) SwapDown() func() bool {
 	return noop
 }
 
-func (e *Editor) SwapUp() func() bool {
+func (e *Editor) SwapUp() func() UndoAction {
 	if e.cursor.line.prev != nil {
 		tempValues := e.cursor.line.values
 		e.cursor.line.values = e.cursor.line.prev.values
@@ -802,7 +804,7 @@ func (e *Editor) SwapUp() func() bool {
 
 		lineNum := e.GetLineNumber()
 		curX := e.cursor.x
-		return func() bool {
+		return func() UndoAction {
 			e.MoveCursor(lineNum, curX)
 			tempValues := e.cursor.line.values
 			e.cursor.line.values = e.cursor.line.next.values
@@ -826,7 +828,7 @@ func (e *Editor) SelectAll() {
 	}
 }
 
-func (e *Editor) DeleteSinglePrevious() func() bool {
+func (e *Editor) DeleteSinglePrevious() func() UndoAction {
 	if e.cursor.line == e.start && e.cursor.x == 0 {
 		return noop
 	}
@@ -835,7 +837,7 @@ func (e *Editor) DeleteSinglePrevious() func() bool {
 		e.deletePrevious()
 		lineNum := e.GetLineNumber()
 		curX := e.cursor.x
-		return func() bool {
+		return func() UndoAction {
 			e.MoveCursor(lineNum, curX)
 			e.handleRune('\n')
 			return true
@@ -845,7 +847,7 @@ func (e *Editor) DeleteSinglePrevious() func() bool {
 		e.deletePrevious()
 		lineNum := e.GetLineNumber()
 		curX := e.cursor.x
-		return func() bool {
+		return func() UndoAction {
 			e.MoveCursor(lineNum, curX)
 			e.handleRune(curRune)
 			return true
