@@ -242,7 +242,6 @@ func (e *Editor) Search() {
 	}
 
 	curLine := e.start
-
 	searchTermIndex := 0
 
 	// Store the location of all runes that are part of a result
