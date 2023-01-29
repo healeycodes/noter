@@ -109,15 +109,15 @@ const (
 )
 
 type Editor struct {
-	mode              uint
-	searchIndex       int
-	searchTerm        []rune
-	start             *Line
-	cursor            *Cursor
-	modified          bool
-	highlighted       map[*Line]map[int]bool
-	searchHighlighted map[*Line]map[int]bool
-	undoStack         []func() bool
+	mode             uint
+	searchIndex      int
+	searchTerm       []rune
+	start            *Line
+	cursor           *Cursor
+	modified         bool
+	highlighted      map[*Line]map[int]bool
+	searchHighlights map[*Line]map[int]bool
+	undoStack        []func() bool
 }
 
 var noop = func() bool { return false }
@@ -125,13 +125,13 @@ var noop = func() bool { return false }
 func (e *Editor) SearchMode() {
 	e.ResetHighlight()
 	e.mode = SEARCH_MODE
-	e.searchHighlighted = make(map[*Line]map[int]bool)
+	e.searchHighlights = make(map[*Line]map[int]bool)
 }
 
 func (e *Editor) EditMode() {
 	e.mode = EDIT_MODE
 	e.searchTerm = make([]rune, 0)
-	e.searchHighlighted = make(map[*Line]map[int]bool)
+	e.searchHighlights = make(map[*Line]map[int]bool)
 }
 
 func (e *Editor) DeleteHighlighted() func() bool {
@@ -235,56 +235,96 @@ func (e *Editor) Load() error {
 
 func (e *Editor) Search() {
 	// Always reset search highlights (for empty searches)
-	e.searchHighlighted = make(map[*Line]map[int]bool)
+	e.searchHighlights = make(map[*Line]map[int]bool)
 
 	if len(e.searchTerm) == 0 {
 		return
 	}
 
-	lineMatches := make([]*Line, 0)
-	xMatches := make([]int, 0)
 	curLine := e.start
+
+	searchTermIndex := 0
+
+	// Store the location of all runes that are part of a result
+	// this will be used to highlight
+	possibleMatches := make(map[*Line]map[int]bool, 0)
+
+	// Store the starting lines and line indexes of every match
+	// this will be used to tab between results
+	possibleLines := make([]*Line, 0)
+	possibleXs := make([]int, 0)
+
 	for curLine != nil {
-		// Hold onto your hats, we're about to run some slooow code!
 		for index, r := range curLine.values {
-			if unicode.ToLower(r) == unicode.ToLower(e.searchTerm[0]) && index+len(e.searchTerm) < len(curLine.values) {
-				if runeSliceEqualityCaseInsensitive(e.searchTerm, curLine.values[index:index+len(e.searchTerm)]) {
+			if unicode.ToLower(e.searchTerm[searchTermIndex]) == unicode.ToLower(r) {
 
-					// Store search highlights
-					if _, ok := e.searchHighlighted[curLine]; !ok {
-						e.searchHighlighted[curLine] = make(map[int]bool)
-					}
-					for i := index; i < index+len(e.searchTerm); i++ {
-						e.searchHighlighted[curLine][i] = true
-					}
-
-					lineMatches = append(lineMatches, curLine)
-					xMatches = append(xMatches, index)
+				// We've found the possible start of a match
+				if searchTermIndex == 0 {
+					possibleLines = append(possibleLines, curLine)
+					possibleXs = append(possibleXs, index)
 				}
+				searchTermIndex++
+
+				// We've found part of a possible match
+				if _, ok := possibleMatches[curLine]; !ok {
+					possibleMatches[curLine] = make(map[int]bool)
+				}
+				possibleMatches[curLine][index] = true
+			} else {
+				// Clear up the incorrect possible start
+				if searchTermIndex > 0 {
+					possibleLines = possibleLines[:len(possibleLines)-1]
+					possibleXs = possibleXs[:len(possibleXs)-1]
+				}
+
+				searchTermIndex = 0
+
+				// Clear up the incorrect possible match parts
+				possibleMatches = make(map[*Line]map[int]bool, 0)
+			}
+
+			// We found a full match. Save the match parts for highlighting
+			// and reset all state to check for more matches
+			if searchTermIndex == len(e.searchTerm) {
+				for line := range possibleMatches {
+					for x := range possibleMatches[line] {
+						if _, ok := e.searchHighlights[line]; !ok {
+							e.searchHighlights[line] = make(map[int]bool)
+						}
+						e.searchHighlights[line][x] = true
+					}
+				}
+
+				searchTermIndex = 0
+				possibleMatches = make(map[*Line]map[int]bool, 0)
 			}
 		}
 		curLine = curLine.next
 	}
 
-	if len(lineMatches) > 0 {
+	// Were there any full matches?
+	if len(possibleLines) > 0 {
+
+		// Have we tabbed before the first full match?
 		if e.searchIndex == -1 {
-			e.cursor.line = lineMatches[len(lineMatches)-1]
-			e.cursor.x = xMatches[len(xMatches)-1]
-			e.searchIndex = len(lineMatches) - 1
+			e.cursor.line = possibleLines[len(possibleLines)-1]
+			e.cursor.x = possibleXs[len(possibleXs)-1]
+			e.searchIndex = len(possibleLines) - 1
 			return
 		}
 
-		if e.searchIndex > len(lineMatches)-1 {
+		// Have we tabbed beyond the final full match?
+		if e.searchIndex > len(possibleLines)-1 {
 			e.searchIndex = 0
 		}
 
-		e.cursor.line = lineMatches[e.searchIndex]
-		e.cursor.x = xMatches[e.searchIndex]
+		// Move to the desired match
+		e.cursor.line = possibleLines[e.searchIndex]
+		e.cursor.x = possibleXs[e.searchIndex]
 		return
 	}
 
-	// Whether we had to resort to the first match
-	// or if there are no matches, reset this state
+	// There were no matches, reset so that the next search can hit the first match it finds
 	e.searchIndex = 0
 }
 
@@ -1058,7 +1098,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 			}
 
 			// Render search highlighting (if any)
-			if searchHighlight, ok := e.searchHighlighted[curLine]; ok {
+			if searchHighlight, ok := e.searchHighlights[curLine]; ok {
 				if _, ok := searchHighlight[lineIndex]; ok {
 					// Draw green highlight background
 					ebitenutil.DrawRect(screen, float64(x*xUnit)+screenInfo.xPadding, float64(y*yUnit)+screenInfo.yPadding, float64(xUnit), float64(yUnit), color.RGBA{

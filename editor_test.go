@@ -119,3 +119,34 @@ func TestHighlightLineAndGetHighlightedRunes(t *testing.T) {
 		t.Fatalf(`Expected GetHighlightedRunes to return line2's runes, got: %v`, editor.GetHighlightedRunes())
 	}
 }
+
+func TestSearch(t *testing.T) {
+	line1 := &Line{values: []rune{'a', '\n'}}
+	line2 := &Line{values: []rune{'b', '\n'}}
+	line1.next = line2
+	line2.prev = line1
+	editor := &Editor{
+		start: line1,
+		cursor: &Cursor{
+			line2,
+			1,
+		},
+	}
+
+	editor.mode = SEARCH_MODE
+	// This would normally happen in editor.Load()
+	editor.searchHighlights = map[*Line]map[int]bool{}
+	editor.searchTerm = []rune{'b'}
+	editor.Search()
+
+	if _, ok := editor.searchHighlights[line2]; !ok {
+		t.Fatalf("Incorrect search highlights: line2 wasn't highlighted")
+	}
+	if _, ok := editor.searchHighlights[line2][0]; !ok {
+		t.Fatalf("Incorrect search highlights: line index wasn't highlighted")
+	}
+
+	if editor.searchHighlights[line2][0] != true {
+		t.Fatalf("Incorrect search highlights: boolean was false instead of true")
+	}
+}
