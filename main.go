@@ -1089,7 +1089,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 			// Render highlighting (if any)
 			if highlight, ok := e.highlighted[curLine]; ok {
 				if _, ok := highlight[lineIndex]; ok {
-					// Draw blue highlight background
+					// Draw blue-y purple highlight background
 					ebitenutil.DrawRect(screen, float64(x*xUnit)+screenInfo.xPadding, float64(y*yUnit)+screenInfo.yPadding, float64(xUnit), float64(yUnit), color.RGBA{
 						0, 0, 200, 70,
 					})
