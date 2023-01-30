@@ -245,7 +245,7 @@ func (e *Editor) Search() {
 	searchTermIndex := 0
 
 	// Store the location of all runes that are part of a result
-	// this will be used to highlight
+	// this will be used render search highlights
 	possibleMatches := make(map[*Line]map[int]bool, 0)
 
 	// Store the starting lines and line indexes of every match
