@@ -183,6 +183,10 @@ func (e *Editor) ResetHighlight() {
 	e.highlighted = make(map[*Line]map[int]bool)
 }
 
+func (e *Editor) SetModified() {
+	e.modified = true
+}
+
 func (e *Editor) Load() error {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -411,7 +415,7 @@ func (e *Editor) handleRune(r rune) {
 		e.cursor.x++
 	}
 
-	e.modified = true
+	e.SetModified()
 }
 
 func (e *Editor) Update() error {
@@ -517,7 +521,7 @@ func (e *Editor) Update() error {
 			rs = append(rs, r)
 		}
 		e.StoreUndoAction(e.HandleRuneMulti(rs))
-		e.modified = true
+		e.SetModified()
 		return nil
 	}
 
@@ -536,7 +540,7 @@ func (e *Editor) Update() error {
 		e.StoreUndoAction(e.DeleteHighlighted())
 		e.ResetHighlight()
 
-		e.modified = true
+		e.SetModified()
 		return nil
 	}
 
@@ -763,7 +767,7 @@ func (e *Editor) Update() error {
 		}
 
 		e.ResetHighlight()
-		e.modified = true
+		e.SetModified()
 		return nil
 	}
 
