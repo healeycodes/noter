@@ -1,5 +1,7 @@
 # 📝 noter
-> My blog post: [Making a Text Editor with a Game Engine](https://healeycodes.com/making-a-text-editor-with-a-game-engine)
+> My blog posts:
+> - [Making a Text Editor with a Game Engine](https://healeycodes.com/making-a-text-editor-with-a-game-engine)
+> - [Implementing Highlighting, Search, and Undo](https://healeycodes.com/implementing-highlighting-search-and-undo)
 
 <br>
 
