@@ -48,4 +48,4 @@ Run the editor `./noter "A Bird, came down the Walk.txt"`
 ## Roadmap
 
 - More tests
-- Reo?
+- Redo?
