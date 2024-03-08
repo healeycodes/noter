@@ -420,7 +420,7 @@ func (e *Editor) Update() error {
 	// }
 
 	// Modifiers
-	command := ebiten.IsKeyPressed(ebiten.KeyMeta)
+	command := ebiten.IsKeyPressed(ebiten.KeyMeta) || ebiten.IsKeyPressed(ebiten.KeyControl)
 	shift := ebiten.IsKeyPressed(ebiten.KeyShift)
 	option := ebiten.IsKeyPressed(ebiten.KeyAlt)
 
