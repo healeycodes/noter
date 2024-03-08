@@ -1382,15 +1382,3 @@ func main() {
 		log.Fatalln(err)
 	}
 }
-
-func runeSliceEqualityCaseInsensitive(a, b []rune) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if unicode.ToLower(a[i]) != unicode.ToLower(b[i]) {
-			return false
-		}
-	}
-	return true
-}
