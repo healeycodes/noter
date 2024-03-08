@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"image/color"
 	_ "image/png"
+	"io"
 	"log"
 	"math"
 	"os"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 	"unicode"
@@ -20,11 +21,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.design/x/clipboard"
 	"golang.org/x/image/font"
-)
-
-var (
-	filePath string
-	fileName string
 )
 
 type Line struct {
@@ -42,8 +38,11 @@ func (c *Cursor) FixPosition() {
 	c.x = int(math.Min(float64(c.x), float64(len(c.line.values)-1)))
 }
 
-// Clipboard is an interface to the system text clipboard.
-type Clipboard interface {
+// Content is an interface to a clipboard or file to read/write data.
+// We use this instead of io.ReadWriter as we do not want to handle
+// errors or buffered reads in the Editor; we force that to the caller
+// of the editor.
+type Content interface {
 	ReadText() []byte // Read the entire content of the text clipboard.
 	WriteText([]byte) // Write replaces the entire content of the text clipboard.
 }
@@ -83,7 +82,9 @@ const (
 
 type Editor struct {
 	FontFace  font.Face
-	Clipboard Clipboard
+	Clipboard Content
+	Content   Content
+	FileName  string
 
 	mode             uint
 	searchIndex      int
@@ -201,16 +202,9 @@ func (e *Editor) SetModified() {
 }
 
 func (e *Editor) Load() error {
-	f, err := os.Open(filePath)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer f.Close()
-
-	fileName = filepath.Base(filePath)
-	b, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Fatalln(err)
+	var b []byte
+	if e.Content != nil {
+		b = e.Content.ReadText()
 	}
 
 	source := string(b)
@@ -509,15 +503,12 @@ func (e *Editor) Update() error {
 	// Save
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		allRunes := e.GetAllRunes()
-		saveFile, err := os.Create(filePath)
-		if err != nil {
-			log.Fatalln(err)
+
+		if e.Content != nil {
+			e.Content.WriteText([]byte(string(allRunes)))
+			e.modified = false
 		}
-		_, err = saveFile.Write([]byte(string(allRunes)))
-		if err != nil {
-			log.Fatalln(err)
-		}
-		e.modified = false
+
 		return nil
 	}
 
@@ -1033,7 +1024,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 	if e.mode == SEARCH_MODE {
 		topBar = string(append([]rune(topBar), e.searchTerm...))
 	} else {
-		topBar = fmt.Sprintf("%s %s", fileName, modifiedText)
+		topBar = fmt.Sprintf("%s %s", e.FileName, modifiedText)
 	}
 
 	textColor := color.RGBA{0, 0, 0, 100}
@@ -1356,7 +1347,45 @@ func (cb *clipBoard) WriteText(content []byte) {
 	clipboard.Write(clipboard.FmtText, content)
 }
 
+type fileContent struct {
+	FilePath string
+}
+
+func (fc *fileContent) FileName() (name string) {
+	return path.Base(fc.FilePath)
+}
+
+func (fc *fileContent) ReadText() (content []byte) {
+	file, err := os.Open(fc.FilePath)
+	if err != nil {
+		// It's ok if the file does not (yet) exist.
+		return
+	}
+	defer file.Close()
+
+	content, err = io.ReadAll(file)
+	if err != nil {
+		panic(err)
+	}
+
+	return
+}
+
+func (fc *fileContent) WriteText(content []byte) {
+	file, err := os.Create(fc.FilePath)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	_, err = file.Write(content)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func main() {
+	var filePath string
 	if len(os.Args) < 2 {
 		fmt.Println("usage: noter <filepath>")
 		os.Exit(1)
@@ -1368,9 +1397,13 @@ func main() {
 		filePath = os.Args[1]
 	}
 
+	content := &fileContent{FilePath: filePath}
 	editor := &Editor{
 		Clipboard: &clipBoard{}, // Use system clipboard.
+		Content:   content,
+		FileName:  content.FileName(),
 	}
+
 	err := editor.Load()
 	if err != nil {
 		log.Fatalln(err)
