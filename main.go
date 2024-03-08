@@ -8,7 +8,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
+	"golang.design/x/clipboard"
 	"golang.org/x/image/font"
 )
 
@@ -42,6 +42,26 @@ func (c *Cursor) FixPosition() {
 	c.x = int(math.Min(float64(c.x), float64(len(c.line.values)-1)))
 }
 
+// Clipboard is an interface to the system text clipboard.
+type Clipboard interface {
+	Read() []byte // Read the entire content of the text clipboard.
+	Write([]byte) // Write replaces the entire content of the text clipboard.
+}
+
+// localClipboard provides a trivial text clipboard implementation.
+type localClipboard struct {
+	content string
+}
+
+func (cb *localClipboard) Read() []byte {
+	return []byte(cb.content)
+}
+
+func (cb *localClipboard) Write(content []byte) {
+	// 'string' cast will make a duplicate of the content.
+	cb.content = string(content)
+}
+
 type ScreenInfo struct {
 	xLayout   int
 	yLayout   int
@@ -62,7 +82,8 @@ const (
 )
 
 type Editor struct {
-	FontFace font.Face
+	FontFace  font.Face
+	Clipboard Clipboard
 
 	mode             uint
 	searchIndex      int
@@ -419,6 +440,11 @@ func (e *Editor) Update() error {
 	// 	}
 	// }
 
+	// If no clipboard is set, use a local clipboard.
+	if e.Clipboard == nil {
+		e.Clipboard = &localClipboard{}
+	}
+
 	// Modifiers
 	command := ebiten.IsKeyPressed(ebiten.KeyMeta) || ebiten.IsKeyPressed(ebiten.KeyControl)
 	shift := ebiten.IsKeyPressed(ebiten.KeyShift)
@@ -504,10 +530,7 @@ func (e *Editor) Update() error {
 
 	// Paste
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyV) {
-		pasteBytes, err := macOSpaste()
-		if err != nil {
-			log.Fatalln(err)
-		}
+		pasteBytes := e.Clipboard.Read()
 		rs := []rune{}
 		for _, r := range string(pasteBytes) {
 			rs = append(rs, r)
@@ -524,10 +547,7 @@ func (e *Editor) Update() error {
 			return nil
 		}
 
-		err := macOScopy([]byte(string(copyRunes)))
-		if err != nil {
-			log.Fatalln(err)
-		}
+		e.Clipboard.Write([]byte(string(copyRunes)))
 
 		e.StoreUndoAction(e.DeleteHighlighted())
 		e.ResetHighlight()
@@ -543,10 +563,7 @@ func (e *Editor) Update() error {
 		}
 		copyRunes := e.GetHighlightedRunes()
 		copyBytes := []byte(string(copyRunes))
-		err := macOScopy(copyBytes)
-		if err != nil {
-			log.Fatalln(err)
-		}
+		e.Clipboard.Write(copyBytes)
 		return nil
 	}
 
@@ -1328,34 +1345,15 @@ func KeyToRune(k ebiten.Key, shift bool) (rune, bool) {
 	return rune(ret[0]), true
 }
 
-func macOScopy(copyBytes []byte) error {
-	cmd := exec.Command("pbcopy")
-	in, err := cmd.StdinPipe()
-	if err != nil {
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	if _, err := in.Write(copyBytes); err != nil {
-		return err
-	}
-	if err := in.Close(); err != nil {
-		return err
-	}
-	if err := cmd.Wait(); err != nil {
-		return err
-	}
-	return nil
+type clipBoard struct {
 }
 
-func macOSpaste() ([]byte, error) {
-	cmd := exec.Command("pbpaste")
-	pasteBytes, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-	return pasteBytes, nil
+func (cb *clipBoard) Read() []byte {
+	return clipboard.Read(clipboard.FmtText)
+}
+
+func (cb *clipBoard) Write(content []byte) {
+	clipboard.Write(clipboard.FmtText, content)
 }
 
 func main() {
@@ -1370,7 +1368,9 @@ func main() {
 		filePath = os.Args[1]
 	}
 
-	editor := &Editor{}
+	editor := &Editor{
+		//		Clipboard: &clipBoard{},
+	}
 	err := editor.Load()
 	if err != nil {
 		log.Fatalln(err)
