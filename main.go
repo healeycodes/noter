@@ -7,7 +7,6 @@ import (
 	_ "image/png"
 	"io"
 	"log"
-	"math"
 	"os"
 	"path"
 	"sort"
@@ -35,7 +34,10 @@ type Cursor struct {
 }
 
 func (c *Cursor) FixPosition() {
-	c.x = int(math.Min(float64(c.x), float64(len(c.line.values)-1)))
+	limit := len(c.line.values) - 1
+	if c.x > limit {
+		c.x = limit
+	}
 }
 
 // Content is an interface to a clipboard or file to read/write data.
@@ -158,7 +160,9 @@ func (e *Editor) DeleteHighlighted() func() bool {
 			lastHighlightedLine = curLine
 			lastHighlightedX = 0
 			for index := range lineWithHighlights {
-				lastHighlightedX = int(math.Max(float64(index), float64(lastHighlightedX)))
+				if lastHighlightedX < index {
+					lastHighlightedX = index
+				}
 				highlightCount++
 			}
 		}
