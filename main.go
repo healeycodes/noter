@@ -44,8 +44,8 @@ func (c *Cursor) FixPosition() {
 
 // Clipboard is an interface to the system text clipboard.
 type Clipboard interface {
-	Read() []byte // Read the entire content of the text clipboard.
-	Write([]byte) // Write replaces the entire content of the text clipboard.
+	ReadText() []byte // Read the entire content of the text clipboard.
+	WriteText([]byte) // Write replaces the entire content of the text clipboard.
 }
 
 // localClipboard provides a trivial text clipboard implementation.
@@ -53,11 +53,11 @@ type localClipboard struct {
 	content string
 }
 
-func (cb *localClipboard) Read() []byte {
+func (cb *localClipboard) ReadText() []byte {
 	return []byte(cb.content)
 }
 
-func (cb *localClipboard) Write(content []byte) {
+func (cb *localClipboard) WriteText(content []byte) {
 	// 'string' cast will make a duplicate of the content.
 	cb.content = string(content)
 }
@@ -530,7 +530,7 @@ func (e *Editor) Update() error {
 
 	// Paste
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyV) {
-		pasteBytes := e.Clipboard.Read()
+		pasteBytes := e.Clipboard.ReadText()
 		rs := []rune{}
 		for _, r := range string(pasteBytes) {
 			rs = append(rs, r)
@@ -547,7 +547,7 @@ func (e *Editor) Update() error {
 			return nil
 		}
 
-		e.Clipboard.Write([]byte(string(copyRunes)))
+		e.Clipboard.WriteText([]byte(string(copyRunes)))
 
 		e.StoreUndoAction(e.DeleteHighlighted())
 		e.ResetHighlight()
@@ -563,7 +563,7 @@ func (e *Editor) Update() error {
 		}
 		copyRunes := e.GetHighlightedRunes()
 		copyBytes := []byte(string(copyRunes))
-		e.Clipboard.Write(copyBytes)
+		e.Clipboard.WriteText(copyBytes)
 		return nil
 	}
 
@@ -1348,11 +1348,11 @@ func KeyToRune(k ebiten.Key, shift bool) (rune, bool) {
 type clipBoard struct {
 }
 
-func (cb *clipBoard) Read() []byte {
+func (cb *clipBoard) ReadText() []byte {
 	return clipboard.Read(clipboard.FmtText)
 }
 
-func (cb *clipBoard) Write(content []byte) {
+func (cb *clipBoard) WriteText(content []byte) {
 	clipboard.Write(clipboard.FmtText, content)
 }
 
@@ -1369,7 +1369,7 @@ func main() {
 	}
 
 	editor := &Editor{
-		//		Clipboard: &clipBoard{},
+		Clipboard: &clipBoard{}, // Use system clipboard.
 	}
 	err := editor.Load()
 	if err != nil {
