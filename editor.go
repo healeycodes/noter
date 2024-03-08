@@ -1,14 +1,32 @@
-package main
+// MIT License
+// 
+// Copyright (c) 2024 Andrew Healey
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+package noter
 
 import (
-	_ "embed"
 	"fmt"
 	"image/color"
-	_ "image/png"
-	"io"
 	"log"
 	"os"
-	"path"
 	"sort"
 	"strings"
 	"unicode"
@@ -18,7 +36,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
-	"golang.design/x/clipboard"
 	"golang.org/x/image/font"
 )
 
@@ -1338,84 +1355,4 @@ func KeyToRune(k ebiten.Key, shift bool) (rune, bool) {
 	}
 
 	return rune(ret[0]), true
-}
-
-type clipBoard struct {
-}
-
-func (cb *clipBoard) ReadText() []byte {
-	return clipboard.Read(clipboard.FmtText)
-}
-
-func (cb *clipBoard) WriteText(content []byte) {
-	clipboard.Write(clipboard.FmtText, content)
-}
-
-type fileContent struct {
-	FilePath string
-}
-
-func (fc *fileContent) FileName() (name string) {
-	return path.Base(fc.FilePath)
-}
-
-func (fc *fileContent) ReadText() (content []byte) {
-	file, err := os.Open(fc.FilePath)
-	if err != nil {
-		// It's ok if the file does not (yet) exist.
-		return
-	}
-	defer file.Close()
-
-	content, err = io.ReadAll(file)
-	if err != nil {
-		panic(err)
-	}
-
-	return
-}
-
-func (fc *fileContent) WriteText(content []byte) {
-	file, err := os.Create(fc.FilePath)
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
-
-	_, err = file.Write(content)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func main() {
-	var filePath string
-	if len(os.Args) < 2 {
-		fmt.Println("usage: noter <filepath>")
-		os.Exit(1)
-	} else if len(os.Args) == 3 {
-		// Allow `go run . -- a.txt` for now..
-		filePath = os.Args[2]
-	} else {
-		// This is the way
-		filePath = os.Args[1]
-	}
-
-	content := &fileContent{FilePath: filePath}
-	editor := &Editor{
-		Clipboard: &clipBoard{}, // Use system clipboard.
-		Content:   content,
-		FileName:  content.FileName(),
-	}
-
-	err := editor.Load()
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	ebiten.SetWindowSize(800, 500)
-	ebiten.SetWindowTitle("noter")
-	if err = ebiten.RunGame(editor); err != nil {
-		log.Fatalln(err)
-	}
 }

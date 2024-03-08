@@ -33,17 +33,17 @@ Command +
 
 Run the fonts build script `bash fonts.sh`
 
-Run the editor `go run . -- "A Bird, came down the Walk.txt"`
+Run the editor `go run github.com/healeycodes/noter/cmd -- "A Bird, came down the Walk.txt"`
 
 ## Build
 
-Build `go build .`
+Build `go build -o noter github.com/healeycodes/noter/cmd`
 
 Run the editor `./noter "A Bird, came down the Walk.txt"`
 
 ## Tests
 
-`go test ./...`
+`go test .`
 
 ## Roadmap
 

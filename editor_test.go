@@ -1,4 +1,4 @@
-package main
+package noter
 
 import (
 	"reflect"
