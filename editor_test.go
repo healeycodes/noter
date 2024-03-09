@@ -25,19 +25,19 @@ func TestKeyToRune(t *testing.T) {
 }
 
 func TestGetLineNumber(t *testing.T) {
-	line1 := &Line{}
-	line2 := &Line{}
+	line1 := &editorLine{}
+	line2 := &editorLine{}
 	line1.next = line2
 	line2.prev = line1
 	editor := &Editor{
 		start: line1,
-		cursor: &Cursor{
+		cursor: &editorCursor{
 			line2,
 			0,
 		},
 	}
 
-	lineNum := editor.GetLineNumber()
+	lineNum := editor.getLineNumber()
 	want := 1
 	if lineNum != want {
 		t.Fatalf(`Expected current line number to be %v, got: %v`, want, lineNum)
@@ -45,89 +45,89 @@ func TestGetLineNumber(t *testing.T) {
 }
 
 func TestGetAllRunes(t *testing.T) {
-	line1 := &Line{values: []rune{'a', '\n'}}
-	line2 := &Line{values: []rune{'b', '\n'}}
+	line1 := &editorLine{values: []rune{'a', '\n'}}
+	line2 := &editorLine{values: []rune{'b', '\n'}}
 	line1.next = line2
 	line2.prev = line1
 	editor := &Editor{
 		start: line1,
-		cursor: &Cursor{
+		cursor: &editorCursor{
 			line2,
 			0,
 		},
 	}
 
-	allRunes := editor.GetAllRunes()
+	allRunes := editor.getAllRunes()
 	if reflect.DeepEqual(allRunes, []rune{'a', '\n', 'b', '\n'}) != true {
 		t.Fatalf(`Expected allRunes to return document runes, got: %v`, allRunes)
 	}
 }
 
 func TestDeleteRune(t *testing.T) {
-	line1 := &Line{values: []rune{'a', '\n'}}
+	line1 := &editorLine{values: []rune{'a', '\n'}}
 	editor := &Editor{
 		start: line1,
-		cursor: &Cursor{
+		cursor: &editorCursor{
 			line1,
 			1,
 		},
 	}
 
-	editor.DeleteSinglePrevious()
+	editor.fnDeleteSinglePrevious()
 	if len(line1.values) != 0 && line1.values[0] != '\n' {
 		t.Fatalf("Delete operation did not work correctly, got: %v", line1.values)
 	}
 }
 
 func TestDeleteLine(t *testing.T) {
-	line1 := &Line{values: []rune{'a', '\n'}}
-	line2 := &Line{values: []rune{'b', '\n'}}
+	line1 := &editorLine{values: []rune{'a', '\n'}}
+	line2 := &editorLine{values: []rune{'b', '\n'}}
 	line1.next = line2
 	line2.prev = line1
 	editor := &Editor{
 		start: line1,
-		cursor: &Cursor{
+		cursor: &editorCursor{
 			line2,
 			1,
 		},
 	}
 
-	editor.DeleteSinglePrevious()
-	editor.DeleteSinglePrevious()
+	editor.fnDeleteSinglePrevious()
+	editor.fnDeleteSinglePrevious()
 	if len(line1.values) != 0 && line1.next != nil {
 		t.Fatalf("Delete operation did not work correctly, got: %v, %v", line1.values, line1.next)
 	}
 }
 
 func TestHighlightLineAndGetHighlightedRunes(t *testing.T) {
-	line1 := &Line{values: []rune{'a', '\n'}}
-	line2 := &Line{values: []rune{'b', '\n'}}
+	line1 := &editorLine{values: []rune{'a', '\n'}}
+	line2 := &editorLine{values: []rune{'b', '\n'}}
 	line1.next = line2
 	line2.prev = line1
 	editor := &Editor{
 		start: line1,
-		cursor: &Cursor{
+		cursor: &editorCursor{
 			line2,
 			1,
 		},
 		// This would normally happen in editor.Load()
-		highlighted: make(map[*Line]map[int]bool),
+		highlighted: make(map[*editorLine]map[int]bool),
 	}
 
-	editor.HighlightLine()
-	if reflect.DeepEqual(editor.GetHighlightedRunes(), []rune{'b', '\n'}) != true {
-		t.Fatalf(`Expected GetHighlightedRunes to return line2's runes, got: %v`, editor.GetHighlightedRunes())
+	editor.highlightLine()
+	if reflect.DeepEqual(editor.getHighlightedRunes(), []rune{'b', '\n'}) != true {
+		t.Fatalf(`Expected GetHighlightedRunes to return line2's runes, got: %v`, editor.getHighlightedRunes())
 	}
 }
 
 func TestSearch(t *testing.T) {
-	line1 := &Line{values: []rune{'a', '\n'}}
-	line2 := &Line{values: []rune{'b', '\n'}}
+	line1 := &editorLine{values: []rune{'a', '\n'}}
+	line2 := &editorLine{values: []rune{'b', '\n'}}
 	line1.next = line2
 	line2.prev = line1
 	editor := &Editor{
 		start: line1,
-		cursor: &Cursor{
+		cursor: &editorCursor{
 			line2,
 			1,
 		},
@@ -135,9 +135,9 @@ func TestSearch(t *testing.T) {
 
 	editor.mode = SEARCH_MODE
 	// This would normally happen in editor.Load()
-	editor.searchHighlights = map[*Line]map[int]bool{}
+	editor.searchHighlights = map[*editorLine]map[int]bool{}
 	editor.searchTerm = []rune{'b'}
-	editor.Search()
+	editor.search()
 
 	if _, ok := editor.searchHighlights[line2]; !ok {
 		t.Fatalf("Incorrect search highlights: line2 wasn't highlighted")

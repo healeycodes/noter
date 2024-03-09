@@ -44,18 +44,18 @@ const (
 	EDITOR_DEFAULT_COLS = 80
 )
 
-type Line struct {
-	prev   *Line
-	next   *Line
+type editorLine struct {
+	prev   *editorLine
+	next   *editorLine
 	values []rune
 }
 
-type Cursor struct {
-	line *Line
+type editorCursor struct {
+	line *editorLine
 	x    int
 }
 
-func (c *Cursor) FixPosition() {
+func (c *editorCursor) FixPosition() {
 	limit := len(c.line.values) - 1
 	if c.x > limit {
 		c.x = limit
@@ -114,6 +114,8 @@ const (
 
 var noop = func() bool { return false }
 
+// Editor is an ebiten.Game compliant interface, which presents a
+// simple text editor.
 type Editor struct {
 	// Settable options
 	font_info        *fontInfo
@@ -140,11 +142,11 @@ type Editor struct {
 	mode             uint
 	searchIndex      int
 	searchTerm       []rune
-	start            *Line
-	cursor           *Cursor
+	start            *editorLine
+	cursor           *editorCursor
 	modified         bool
-	highlighted      map[*Line]map[int]bool
-	searchHighlights map[*Line]map[int]bool
+	highlighted      map[*editorLine]map[int]bool
+	searchHighlights map[*editorLine]map[int]bool
 	undoStack        []func() bool
 }
 
@@ -376,24 +378,24 @@ func NewEditor(options ...EditorOption) (e *Editor) {
 	}
 
 	// Load content.
-	e.Load()
+	e.loadContent()
 
 	return e
 }
 
-func (e *Editor) SearchMode() {
-	e.ResetHighlight()
+func (e *Editor) searchMode() {
+	e.resetHighlight()
 	e.mode = SEARCH_MODE
-	e.searchHighlights = make(map[*Line]map[int]bool)
+	e.searchHighlights = make(map[*editorLine]map[int]bool)
 }
 
-func (e *Editor) EditMode() {
+func (e *Editor) editMode() {
 	e.mode = EDIT_MODE
 	e.searchTerm = make([]rune, 0)
-	e.searchHighlights = make(map[*Line]map[int]bool)
+	e.searchHighlights = make(map[*editorLine]map[int]bool)
 }
 
-func (e *Editor) DeleteHighlighted() func() bool {
+func (e *Editor) fnDeleteHighlighted() func() bool {
 	highlightCount := 0
 	lastHighlightedLine := e.start
 	lastHighlightedX := 0
@@ -422,13 +424,13 @@ func (e *Editor) DeleteHighlighted() func() bool {
 		e.cursor.x = 0
 	}
 
-	highlightedRunes := e.GetHighlightedRunes()
+	highlightedRunes := e.getHighlightedRunes()
 
 	for i := 0; i < highlightCount; i++ {
 		e.deletePrevious()
 	}
 
-	lineNum := e.GetLineNumber()
+	lineNum := e.getLineNumber()
 	curX := e.cursor.x
 
 	return func() bool {
@@ -440,15 +442,15 @@ func (e *Editor) DeleteHighlighted() func() bool {
 	}
 }
 
-func (e *Editor) ResetHighlight() {
-	e.highlighted = make(map[*Line]map[int]bool)
+func (e *Editor) resetHighlight() {
+	e.highlighted = make(map[*editorLine]map[int]bool)
 }
 
-func (e *Editor) SetModified() {
+func (e *Editor) setModified() {
 	e.modified = true
 }
 
-func (e *Editor) Load() error {
+func (e *Editor) loadContent() error {
 	var b []byte
 	if e.content != nil {
 		b = e.content.ReadText()
@@ -456,12 +458,12 @@ func (e *Editor) Load() error {
 
 	source := string(b)
 
-	e.EditMode()
+	e.editMode()
 	e.undoStack = make([]func() bool, 0)
 	e.searchTerm = make([]rune, 0)
-	e.highlighted = make(map[*Line]map[int]bool)
-	e.start = &Line{values: make([]rune, 0)}
-	e.cursor = &Cursor{line: e.start, x: 0}
+	e.highlighted = make(map[*editorLine]map[int]bool)
+	e.start = &editorLine{values: make([]rune, 0)}
+	e.cursor = &editorCursor{line: e.start, x: 0}
 	currentLine := e.start
 
 	if len(source) == 0 {
@@ -470,7 +472,7 @@ func (e *Editor) Load() error {
 		for _, char := range source {
 			currentLine.values = append(currentLine.values, char)
 			if char == '\n' {
-				nextLine := &Line{values: make([]rune, 0)}
+				nextLine := &editorLine{values: make([]rune, 0)}
 				currentLine.next = nextLine
 				nextLine.prev = currentLine
 				currentLine = nextLine
@@ -491,9 +493,9 @@ func (e *Editor) Load() error {
 	return nil
 }
 
-func (e *Editor) Search() {
+func (e *Editor) search() {
 	// Always reset search highlights (for empty searches)
-	e.searchHighlights = make(map[*Line]map[int]bool)
+	e.searchHighlights = make(map[*editorLine]map[int]bool)
 
 	if len(e.searchTerm) == 0 {
 		return
@@ -504,11 +506,11 @@ func (e *Editor) Search() {
 
 	// Store the location of all runes that are part of a result
 	// this will be used render search highlights
-	possibleMatches := make(map[*Line]map[int]bool, 0)
+	possibleMatches := make(map[*editorLine]map[int]bool, 0)
 
 	// Store the starting lines and line indexes of every match
 	// this will be used to tab between results
-	possibleLines := make([]*Line, 0)
+	possibleLines := make([]*editorLine, 0)
 	possibleXs := make([]int, 0)
 
 	for curLine != nil {
@@ -537,7 +539,7 @@ func (e *Editor) Search() {
 				searchTermIndex = 0
 
 				// Clear up the incorrect possible match parts
-				possibleMatches = make(map[*Line]map[int]bool, 0)
+				possibleMatches = make(map[*editorLine]map[int]bool, 0)
 			}
 
 			// We found a full match. Save the match parts for highlighting
@@ -553,7 +555,7 @@ func (e *Editor) Search() {
 				}
 
 				searchTermIndex = 0
-				possibleMatches = make(map[*Line]map[int]bool, 0)
+				possibleMatches = make(map[*editorLine]map[int]bool, 0)
 			}
 		}
 		curLine = curLine.next
@@ -585,15 +587,15 @@ func (e *Editor) Search() {
 	e.searchIndex = 0
 }
 
-func (e *Editor) HandleRuneSingle(r rune) func() bool {
+func (e *Editor) fnHandleRuneSingle(r rune) func() bool {
 	undoDeleteHighlighted := func() bool { return false }
 	if len(e.highlighted) != 0 {
-		undoDeleteHighlighted = e.DeleteHighlighted()
+		undoDeleteHighlighted = e.fnDeleteHighlighted()
 	}
 
 	e.handleRune(r)
 
-	lineNum := e.GetLineNumber()
+	lineNum := e.getLineNumber()
 	curX := e.cursor.x
 	return func() bool {
 		e.MoveCursor(lineNum, curX)
@@ -603,17 +605,17 @@ func (e *Editor) HandleRuneSingle(r rune) func() bool {
 	}
 }
 
-func (e *Editor) HandleRuneMulti(rs []rune) func() bool {
+func (e *Editor) fnHandleRuneMulti(rs []rune) func() bool {
 	undoDeleteHighlighted := func() bool { return false }
 	if len(e.highlighted) != 0 {
-		undoDeleteHighlighted = e.DeleteHighlighted()
+		undoDeleteHighlighted = e.fnDeleteHighlighted()
 	}
 
 	for _, r := range rs {
 		e.handleRune(r)
 	}
 
-	lineNum := e.GetLineNumber()
+	lineNum := e.getLineNumber()
 	curX := e.cursor.x
 	return func() bool {
 		e.MoveCursor(lineNum, curX)
@@ -628,12 +630,12 @@ func (e *Editor) HandleRuneMulti(rs []rune) func() bool {
 func (e *Editor) handleRune(r rune) {
 	if e.mode == SEARCH_MODE {
 		e.searchTerm = append(e.searchTerm, r)
-		e.Search()
+		e.search()
 		return
 	}
 
 	if len(e.highlighted) != 0 {
-		e.ResetHighlight()
+		e.resetHighlight()
 	}
 
 	if r == '\n' {
@@ -647,7 +649,7 @@ func (e *Editor) handleRune(r rune) {
 		leftBehindValues = append(leftBehindValues, '\n')
 		e.cursor.line.values = leftBehindValues
 
-		e.cursor.line = &Line{
+		e.cursor.line = &editorLine{
 			values: shiftedValues,
 			prev:   before,
 			next:   after,
@@ -669,9 +671,10 @@ func (e *Editor) handleRune(r rune) {
 		e.cursor.x++
 	}
 
-	e.SetModified()
+	e.setModified()
 }
 
+// Update the editor state.
 func (e *Editor) Update() error {
 	// Update the internal image when complete.
 	defer e.updateImage()
@@ -698,9 +701,9 @@ func (e *Editor) Update() error {
 	// Enter search mode
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		if e.mode == SEARCH_MODE {
-			e.EditMode()
+			e.editMode()
 		} else {
-			e.SearchMode()
+			e.searchMode()
 		}
 		return nil
 	}
@@ -714,20 +717,20 @@ func (e *Editor) Update() error {
 		} else if down {
 			e.searchIndex++
 		}
-		e.Search()
+		e.search()
 		return nil
 	}
 
 	// Exit search mode
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		e.EditMode()
+		e.editMode()
 		return nil
 	}
 
 	// Undo
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyZ) {
-		e.EditMode()
-		e.ResetHighlight()
+		e.editMode()
+		e.resetHighlight()
 
 		for len(e.undoStack) > 0 {
 			notNoop := e.undoStack[len(e.undoStack)-1]()
@@ -747,7 +750,7 @@ func (e *Editor) Update() error {
 
 	// Save
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyS) {
-		allRunes := e.GetAllRunes()
+		allRunes := e.getAllRunes()
 
 		if e.content != nil {
 			e.content.WriteText([]byte(string(allRunes)))
@@ -759,8 +762,8 @@ func (e *Editor) Update() error {
 
 	// Highlight all
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyA) {
-		e.EditMode()
-		e.SelectAll()
+		e.editMode()
+		e.fnSelectAll()
 		return nil
 	}
 
@@ -771,24 +774,24 @@ func (e *Editor) Update() error {
 		for _, r := range string(pasteBytes) {
 			rs = append(rs, r)
 		}
-		e.StoreUndoAction(e.HandleRuneMulti(rs))
-		e.SetModified()
+		e.storeUndoAction(e.fnHandleRuneMulti(rs))
+		e.setModified()
 		return nil
 	}
 
 	// Cut highlight
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyX) {
-		copyRunes := e.GetHighlightedRunes()
+		copyRunes := e.getHighlightedRunes()
 		if len(copyRunes) == 0 {
 			return nil
 		}
 
 		e.clipboard.WriteText([]byte(string(copyRunes)))
 
-		e.StoreUndoAction(e.DeleteHighlighted())
-		e.ResetHighlight()
+		e.storeUndoAction(e.fnDeleteHighlighted())
+		e.resetHighlight()
 
-		e.SetModified()
+		e.setModified()
 		return nil
 	}
 
@@ -797,7 +800,7 @@ func (e *Editor) Update() error {
 		if len(e.highlighted) == 0 {
 			return nil
 		}
-		copyRunes := e.GetHighlightedRunes()
+		copyRunes := e.getHighlightedRunes()
 		copyBytes := []byte(string(copyRunes))
 		e.clipboard.WriteText(copyBytes)
 		return nil
@@ -805,11 +808,11 @@ func (e *Editor) Update() error {
 
 	// Handle movement
 	if right || left || up || down {
-		e.EditMode()
+		e.editMode()
 
 		// Clear up old highlighting
 		if !shift {
-			e.ResetHighlight()
+			e.resetHighlight()
 		}
 
 		// Option scanning finds the next emptyType after hitting a non-emptyType
@@ -821,7 +824,7 @@ func (e *Editor) Update() error {
 				// Find the next empty
 				for e.cursor.x < len(e.cursor.line.values)-2 {
 					if shift {
-						e.Highlight(e.cursor.line, e.cursor.x)
+						e.highlight(e.cursor.line, e.cursor.x)
 					}
 					e.cursor.x++
 					if ok := emptyTypes[e.cursor.line.values[e.cursor.x]]; !ok {
@@ -829,25 +832,25 @@ func (e *Editor) Update() error {
 						break
 					}
 					if shift {
-						e.Highlight(e.cursor.line, e.cursor.x)
+						e.highlight(e.cursor.line, e.cursor.x)
 					}
 				}
 			} else if command {
 				for e.cursor.x < len(e.cursor.line.values)-1 {
 					if shift {
-						e.Highlight(e.cursor.line, e.cursor.x)
+						e.highlight(e.cursor.line, e.cursor.x)
 					}
 					e.cursor.x++
 				}
 			} else {
 				if e.cursor.x < len(e.cursor.line.values)-1 {
 					if shift {
-						e.Highlight(e.cursor.line, e.cursor.x)
+						e.highlight(e.cursor.line, e.cursor.x)
 					}
 					e.cursor.x++
 				} else if e.cursor.line.next != nil {
 					if shift {
-						e.Highlight(e.cursor.line, len(e.cursor.line.values)-1)
+						e.highlight(e.cursor.line, len(e.cursor.line.values)-1)
 					}
 					e.cursor.line = e.cursor.line.next
 					e.cursor.x = 0
@@ -859,7 +862,7 @@ func (e *Editor) Update() error {
 				for e.cursor.x > 0 {
 					e.cursor.x--
 					if shift {
-						e.Highlight(e.cursor.line, e.cursor.x)
+						e.highlight(e.cursor.line, e.cursor.x)
 					}
 					if ok := emptyTypes[e.cursor.line.values[e.cursor.x]]; !ok {
 						break
@@ -870,62 +873,62 @@ func (e *Editor) Update() error {
 				for e.cursor.x > 0 {
 					if ok := emptyTypes[e.cursor.line.values[e.cursor.x-1]]; !ok {
 						if shift {
-							e.Highlight(e.cursor.line, e.cursor.x)
+							e.highlight(e.cursor.line, e.cursor.x)
 						}
 					} else {
 						break
 					}
 					e.cursor.x--
 					if shift {
-						e.Highlight(e.cursor.line, e.cursor.x)
+						e.highlight(e.cursor.line, e.cursor.x)
 					}
 				}
 			} else if command {
 				for e.cursor.x > 0 {
 					e.cursor.x--
 					if shift {
-						e.Highlight(e.cursor.line, e.cursor.x)
+						e.highlight(e.cursor.line, e.cursor.x)
 					}
 				}
 			} else {
 				if e.cursor.x > 0 {
 					e.cursor.x--
 					if shift {
-						e.Highlight(e.cursor.line, e.cursor.x)
+						e.highlight(e.cursor.line, e.cursor.x)
 					}
 				} else if e.cursor.line.prev != nil {
 					e.cursor.line = e.cursor.line.prev
 					e.cursor.x = len(e.cursor.line.values) - 1
 					if shift {
-						e.Highlight(e.cursor.line, e.cursor.x)
+						e.highlight(e.cursor.line, e.cursor.x)
 					}
 				}
 			}
 		} else if up {
 			if option {
-				e.StoreUndoAction(e.SwapUp())
+				e.storeUndoAction(e.fnSwapUp())
 			} else if command {
 				if shift {
-					e.HighlightLineToLeft()
+					e.highlightLineToLeft()
 				}
 				for e.cursor.line.prev != nil {
 					if shift {
-						e.HighlightLine()
+						e.highlightLine()
 					}
 					e.cursor.line = e.cursor.line.prev
 					e.cursor.x = 0
 					if shift {
-						e.HighlightLineToRight()
+						e.highlightLineToRight()
 					}
 				}
 			} else {
 				for x := e.cursor.x - 1; shift && x >= 0; x-- {
-					e.Highlight(e.cursor.line, x)
+					e.highlight(e.cursor.line, x)
 				}
 				if e.cursor.line.prev != nil {
 					e.cursor.line = e.cursor.line.prev
 					for x := e.cursor.x; shift && x < len(e.cursor.line.values); x++ {
-						e.Highlight(e.cursor.line, x)
+						e.highlight(e.cursor.line, x)
 					}
 				} else {
 					e.cursor.x = 0
@@ -934,31 +937,31 @@ func (e *Editor) Update() error {
 			}
 		} else if down {
 			if option {
-				e.StoreUndoAction(e.SwapDown())
+				e.storeUndoAction(e.fnSwapDown())
 			} else if command {
 				for e.cursor.line.next != nil {
 					if shift {
-						e.HighlightLineToRight()
+						e.highlightLineToRight()
 					}
 					e.cursor.line = e.cursor.line.next
 					if shift {
-						e.HighlightLineToLeft()
+						e.highlightLineToLeft()
 					}
 				}
 				// Instead of fixing position, we actually want the document end
 				if shift {
-					e.HighlightLineToRight()
+					e.highlightLineToRight()
 				}
 				e.cursor.x = len(e.cursor.line.values) - 1
 			} else {
 				if e.cursor.line.next != nil {
 					if shift {
-						e.HighlightLineToRight()
+						e.highlightLineToRight()
 					}
 					e.cursor.line = e.cursor.line.next
 					e.cursor.FixPosition()
 					if shift {
-						e.HighlightLineToLeft()
+						e.highlightLineToLeft()
 					}
 				} else {
 					e.cursor.x = len(e.cursor.line.values) - 1
@@ -973,9 +976,9 @@ func (e *Editor) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		if e.mode == SEARCH_MODE {
 			e.searchIndex++
-			e.Search()
+			e.search()
 		} else {
-			e.StoreUndoAction(e.HandleRuneSingle('\n'))
+			e.storeUndoAction(e.fnHandleRuneSingle('\n'))
 		}
 		return nil
 	}
@@ -984,12 +987,12 @@ func (e *Editor) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
 		if e.mode == SEARCH_MODE {
 			e.searchIndex++
-			e.Search()
+			e.search()
 			return nil
 		}
 		// Just insert four spaces
 		for i := 0; i < 4; i++ {
-			e.StoreUndoAction(e.HandleRuneSingle(' '))
+			e.storeUndoAction(e.fnHandleRuneSingle(' '))
 		}
 		return nil
 	}
@@ -1000,19 +1003,19 @@ func (e *Editor) Update() error {
 			if len(e.searchTerm) > 0 {
 				e.searchTerm = e.searchTerm[:len(e.searchTerm)-1]
 			}
-			e.Search()
+			e.search()
 			return nil
 		}
 		// Delete all highlighted content
 		if len(e.highlighted) != 0 {
-			e.StoreUndoAction(e.DeleteHighlighted())
+			e.storeUndoAction(e.fnDeleteHighlighted())
 		} else {
 			// Or..
-			e.StoreUndoAction(e.DeleteSinglePrevious())
+			e.storeUndoAction(e.fnDeleteSinglePrevious())
 		}
 
-		e.ResetHighlight()
-		e.SetModified()
+		e.resetHighlight()
+		e.setModified()
 		return nil
 	}
 
@@ -1027,20 +1030,20 @@ func (e *Editor) Update() error {
 				continue
 			}
 
-			e.StoreUndoAction(e.HandleRuneSingle(keyRune))
+			e.storeUndoAction(e.fnHandleRuneSingle(keyRune))
 		}
 	}
 	return nil
 }
 
-func (e *Editor) StoreUndoAction(fun func() bool) {
+func (e *Editor) storeUndoAction(fun func() bool) {
 	if e.mode == EDIT_MODE {
 		e.undoStack = append(e.undoStack, fun)
 	}
 }
 
-func (e *Editor) ReturnToCursor(line *Line, startingX int) func() {
-	destination := e.GetLineNumberFromLine(line)
+func (e *Editor) fnReturnToCursor(line *editorLine, startingX int) func() {
+	destination := e.getLineNumberFromLine(line)
 	return func() {
 		i := 1
 		e.cursor.line = e.start
@@ -1052,7 +1055,7 @@ func (e *Editor) ReturnToCursor(line *Line, startingX int) func() {
 	}
 }
 
-func (e *Editor) SwapDown() func() bool {
+func (e *Editor) fnSwapDown() func() bool {
 	if e.cursor.line.next != nil {
 		tempValues := e.cursor.line.values
 		e.cursor.line.values = e.cursor.line.next.values
@@ -1060,7 +1063,7 @@ func (e *Editor) SwapDown() func() bool {
 		e.cursor.line = e.cursor.line.next
 		e.cursor.FixPosition()
 
-		lineNum := e.GetLineNumber()
+		lineNum := e.getLineNumber()
 		curX := e.cursor.x
 		return func() bool {
 			e.MoveCursor(lineNum, curX)
@@ -1075,7 +1078,7 @@ func (e *Editor) SwapDown() func() bool {
 	return noop
 }
 
-func (e *Editor) SwapUp() func() bool {
+func (e *Editor) fnSwapUp() func() bool {
 	if e.cursor.line.prev != nil {
 		tempValues := e.cursor.line.values
 		e.cursor.line.values = e.cursor.line.prev.values
@@ -1083,7 +1086,7 @@ func (e *Editor) SwapUp() func() bool {
 		e.cursor.line = e.cursor.line.prev
 		e.cursor.FixPosition()
 
-		lineNum := e.GetLineNumber()
+		lineNum := e.getLineNumber()
 		curX := e.cursor.x
 		return func() bool {
 			e.MoveCursor(lineNum, curX)
@@ -1098,25 +1101,25 @@ func (e *Editor) SwapUp() func() bool {
 	return noop
 }
 
-func (e *Editor) SelectAll() {
+func (e *Editor) fnSelectAll() {
 	e.cursor.line = e.start
-	e.HighlightLine()
+	e.highlightLine()
 
 	for e.cursor.line.next != nil {
 		e.cursor.line = e.cursor.line.next
 		e.cursor.x = len(e.cursor.line.values) - 1
-		e.HighlightLine()
+		e.highlightLine()
 	}
 }
 
-func (e *Editor) DeleteSinglePrevious() func() bool {
+func (e *Editor) fnDeleteSinglePrevious() func() bool {
 	if e.cursor.line == e.start && e.cursor.x == 0 {
 		return noop
 	}
 
 	if e.cursor.x-1 < 0 {
 		e.deletePrevious()
-		lineNum := e.GetLineNumber()
+		lineNum := e.getLineNumber()
 		curX := e.cursor.x
 		return func() bool {
 			e.MoveCursor(lineNum, curX)
@@ -1126,7 +1129,7 @@ func (e *Editor) DeleteSinglePrevious() func() bool {
 	} else {
 		curRune := e.cursor.line.values[e.cursor.x-1]
 		e.deletePrevious()
-		lineNum := e.GetLineNumber()
+		lineNum := e.getLineNumber()
 		curX := e.cursor.x
 		return func() bool {
 			e.MoveCursor(lineNum, curX)
@@ -1161,7 +1164,7 @@ func (e *Editor) deletePrevious() {
 	}
 }
 
-func (e *Editor) GetHighlightedRunes() []rune {
+func (e *Editor) getHighlightedRunes() []rune {
 	copyRunes := make([]rune, 0)
 	curLine := e.start
 	for curLine != nil {
@@ -1180,25 +1183,25 @@ func (e *Editor) GetHighlightedRunes() []rune {
 	return copyRunes
 }
 
-func (e *Editor) HighlightLine() {
+func (e *Editor) highlightLine() {
 	for x := range e.cursor.line.values {
-		e.Highlight(e.cursor.line, x)
+		e.highlight(e.cursor.line, x)
 	}
 }
 
-func (e *Editor) HighlightLineToRight() {
+func (e *Editor) highlightLineToRight() {
 	for x := e.cursor.x; x < len(e.cursor.line.values); x++ {
-		e.Highlight(e.cursor.line, x)
+		e.highlight(e.cursor.line, x)
 	}
 }
 
-func (e *Editor) HighlightLineToLeft() {
+func (e *Editor) highlightLineToLeft() {
 	for x := e.cursor.x - 1; x > -1; x-- {
-		e.Highlight(e.cursor.line, x)
+		e.highlight(e.cursor.line, x)
 	}
 }
 
-func (e *Editor) Highlight(line *Line, x int) {
+func (e *Editor) highlight(line *editorLine, x int) {
 	if _, ok := e.highlighted[line]; ok {
 		e.highlighted[line][x] = true
 	} else {
@@ -1206,7 +1209,7 @@ func (e *Editor) Highlight(line *Line, x int) {
 	}
 }
 
-func (e *Editor) GetAllRunes() []rune {
+func (e *Editor) getAllRunes() []rune {
 	all := make([]rune, 0)
 	cur := e.start
 	for cur != nil {
@@ -1216,31 +1219,41 @@ func (e *Editor) GetAllRunes() []rune {
 	return all
 }
 
-// MoveCursor moves the cursor to the `line` from the top
-// if `x` is `-1` then the cursor is moved to the final element
-func (e *Editor) MoveCursor(line int, x int) {
+// Cursor returns the current cursor position.
+func (e *Editor) Cursor() (row int, col int) {
+	return e.getLineNumberFromLine(e.cursor.line) - 1, e.cursor.x
+}
+
+// MoveCursor moves the cursor to the specified location.
+// If `row` is `-1` then the cursor will be on the final row.
+// If `col` is `-1` then the cursor is moved to the final rune in the row.
+func (e *Editor) MoveCursor(row int, col int) {
 	e.cursor.line = e.start
 	i := 0
-	for i != line {
+	for i != row {
 		if e.cursor.line.next == nil {
-			log.Fatalf("attempted illegal move to %v %v", line, x)
+			if row < 0 {
+				// We're moving to the last line.
+				break
+			}
+			log.Fatalf("attempted illegal move to %v %v", row, col)
 		}
 		e.cursor.line = e.cursor.line.next
 		i++
 	}
-	if x == -1 {
+	if col == -1 {
 		e.cursor.x = len(e.cursor.line.values) - 1
 	} else {
-		e.cursor.x = x
+		e.cursor.x = col
 	}
 }
 
 // Get the cursor's current line number
-func (e *Editor) GetLineNumber() int {
-	return e.GetLineNumberFromLine(e.cursor.line) - 1
+func (e *Editor) getLineNumber() int {
+	return e.getLineNumberFromLine(e.cursor.line) - 1
 }
 
-func (e *Editor) GetLineNumberFromLine(line *Line) int {
+func (e *Editor) getLineNumberFromLine(line *editorLine) int {
 	cur := e.start
 	count := 1
 	for cur != line && cur != e.cursor.line {
@@ -1255,7 +1268,7 @@ func (e *Editor) Size() (width, height int) {
 	return e.width, e.height
 }
 
-// Image returns the internal image.
+// Draw the editor onto the screen, scaled to full size.
 func (e *Editor) Draw(screen *ebiten.Image) {
 	// Scale editor to the screen region we want to draw into.
 	im_width, im_height := screen.Size()
@@ -1312,7 +1325,7 @@ func (e *Editor) updateImage() {
 
 	if e.bot_bar {
 		// Handle bottom bar
-		botBar := fmt.Sprintf("(x)cut (c)opy (v)paste (s)ave (q)uit (f)search [%v:%v:%v] ", e.GetLineNumber()+1, e.cursor.x+1, e.cursor.line.values[e.cursor.x])
+		botBar := fmt.Sprintf("(x)cut (c)opy (v)paste (s)ave (q)uit (f)search [%v:%v:%v] ", e.getLineNumber()+1, e.cursor.x+1, e.cursor.line.values[e.cursor.x])
 		text.Draw(screen, string(botBar), e.font_info.face,
 			e.width_padding, e.height-yUnit+fontAscent,
 			textColor)
@@ -1325,7 +1338,7 @@ func (e *Editor) updateImage() {
 	y := 0
 
 	// Find the screen chunk to render
-	lineNum := e.GetLineNumber()
+	lineNum := e.getLineNumber()
 	screenChunksToSkip := lineNum / e.rows
 	for i := 0; i < screenChunksToSkip*e.rows; i++ {
 		// Skip to that screen chunk
