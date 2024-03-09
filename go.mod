@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/hajimehoshi/bitmapfont/v3 v3.0.0
 	github.com/hajimehoshi/ebiten/v2 v2.4.16
-	golang.org/x/image v0.6.0
+	golang.org/x/image v0.15.0
 )
 
 require (

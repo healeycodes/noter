@@ -1,17 +1,17 @@
 // MIT License
-// 
+//
 // Copyright (c) 2024 Andrew Healey
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -37,6 +37,11 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font"
+)
+
+const (
+	EDITOR_DEFAULT_ROWS = 25
+	EDITOR_DEFAULT_COLS = 80
 )
 
 type Line struct {
@@ -66,32 +71,40 @@ type Content interface {
 	WriteText([]byte) // Write replaces the entire content of the text clipboard.
 }
 
-// localClipboard provides a trivial text clipboard implementation.
-type localClipboard struct {
+// dummyContent provides a trivial text storage implementation.
+type dummyContent struct {
 	content string
 }
 
-func (cb *localClipboard) ReadText() []byte {
+func (cb *dummyContent) ReadText() []byte {
 	return []byte(cb.content)
 }
 
-func (cb *localClipboard) WriteText(content []byte) {
+func (cb *dummyContent) WriteText(content []byte) {
 	// 'string' cast will make a duplicate of the content.
 	cb.content = string(content)
 }
 
-type ScreenInfo struct {
-	xLayout   int
-	yLayout   int
-	lineSlots int
-	xPadding  int
-	yPadding  int
+type fontInfo struct {
+	face   font.Face // Font itself.
+	ascent int       // ascent of the font above the baseline's origin.
+	xUnit  int       // xUnit is the text advance of the '0' glyph.
+	yUnit  int       // yUnit is the line height of the font.
 }
 
-type FontInfo struct {
-	ascent int
-	xUnit  int
-	yUnit  int
+// Create a new fontInfo
+func newfontInfo(font_face font.Face) (fi *fontInfo) {
+	metrics := font_face.Metrics()
+	advance, _ := font_face.GlyphAdvance('0')
+
+	fi = &fontInfo{
+		face:   font_face,
+		ascent: metrics.Ascent.Ceil(),
+		xUnit:  advance.Ceil(),
+		yUnit:  metrics.Height.Ceil(),
+	}
+
+	return fi
 }
 
 const (
@@ -99,12 +112,31 @@ const (
 	SEARCH_MODE
 )
 
-type Editor struct {
-	FontFace  font.Face
-	Clipboard Content
-	Content   Content
-	FileName  string
+var noop = func() bool { return false }
 
+type Editor struct {
+	// Settable options
+	font_info        *fontInfo
+	font_color       color.Color
+	select_color     color.Color
+	search_color     color.Color
+	cursor_color     color.Color
+	background_image *ebiten.Image
+	clipboard        Content
+	content          Content
+	content_name     string
+	rows             int
+	cols             int
+	width            int
+	height           int
+	width_padding    int
+	bot_bar          bool
+	top_bar          bool
+
+	// Internal state
+	screen           *ebiten.Image
+	top_padding      int
+	bot_padding      int
 	mode             uint
 	searchIndex      int
 	searchTerm       []rune
@@ -116,43 +148,237 @@ type Editor struct {
 	undoStack        []func() bool
 }
 
-var noop = func() bool { return false }
+// EditorOption is an option that can be sent to NewEditor()
+type EditorOption func(e *Editor)
 
-func (e *Editor) GetScreenInfo(fi FontInfo) ScreenInfo {
-	// The screen is larger than the layout!
-	xScreen, yScreen := ebiten.WindowSize()
-	xLayout := xScreen / 2
-	yLayout := yScreen / 2
-
-	xPadding := fi.xUnit / 2
-	yPadding := int(float64(fi.yUnit) * 1.25)
-
-	// How many lines of text can be displayed
-	// (there's yPadding for top and bottom bar)
-	lineSlots := (yLayout - int(yPadding*2)) / fi.yUnit
-
-	return ScreenInfo{
-		xLayout:   xLayout,
-		yLayout:   yLayout,
-		lineSlots: lineSlots,
-		xPadding:  xPadding,
-		yPadding:  yPadding,
+// WithContent sets the content accessor, and permits saving and loading.
+func WithContent(opt Content) EditorOption {
+	return func(e *Editor) {
+		e.content = opt
 	}
 }
 
-func (e *Editor) GetFontInfo() FontInfo {
-	if e.FontFace == nil {
-		e.FontFace = bitmapfont.Face
+// WithContentName sets the name of the content
+func WithContentName(opt string) EditorOption {
+	return func(e *Editor) {
+		e.content_name = opt
+	}
+}
+
+// WithTopBar enables the display of the first row as a top bar.
+func WithTopBar(enabled bool) EditorOption {
+	return func(e *Editor) {
+		e.top_bar = enabled
+	}
+}
+
+// WithBottomBar enables the display of the last row as a help display.
+func WithBottomBar(enabled bool) EditorOption {
+	return func(e *Editor) {
+		e.bot_bar = enabled
+	}
+}
+
+// WithClipboard sets the clipboard accessor.
+func WithClipboard(opt Content) EditorOption {
+	return func(e *Editor) {
+		e.clipboard = opt
+	}
+}
+
+// WithFontFace set the default font.
+func WithFontFace(opt font.Face) EditorOption {
+	return func(e *Editor) {
+		e.font_info = newfontInfo(opt)
+	}
+}
+
+// WithFontColor sets the color of the text.
+func WithFontColor(opt color.Color) EditorOption {
+	return func(e *Editor) {
+		e.font_color = opt
+	}
+}
+
+// WithHighlightColor sets the color of the select highlight over the text.
+func WithHighlightColor(opt color.Color) EditorOption {
+	return func(e *Editor) {
+		e.select_color = opt
+	}
+}
+
+// WithSearchColor sets the color of the search highlight over the text.
+func WithSearchColor(opt color.Color) EditorOption {
+	return func(e *Editor) {
+		e.search_color = opt
+	}
+}
+
+// WithCursorColor sets the color of the cursor over the text.
+func WithCursorColor(opt color.Color) EditorOption {
+	return func(e *Editor) {
+		e.cursor_color = opt
+	}
+}
+
+// WithBackgroundColor sets the color of the background.
+func WithBackgroundColor(opt color.Color) EditorOption {
+	return func(e *Editor) {
+		// Make a single pixel image with the background color.
+		// We will scale it to fit.
+		img := ebiten.NewImage(1, 1)
+		img.Fill(opt)
+		e.background_image = img
+	}
+}
+
+// WithBackgroundImage sets the ebiten.Image in the background.
+// It will be scaled to fit the entire background of the editor.
+func WithBackgroundImage(opt *ebiten.Image) EditorOption {
+	return func(e *Editor) {
+		e.background_image = opt
+	}
+}
+
+// WithRows sets the total number of rows in the editor, including
+// the top bar and bottom bar, if enabled. If set to < 0, then:
+//   - if WithHeight is set, then the maximum number of rows that would
+//     fit, based on font height, is used.
+//   - if WithHeight is not set, then the number of rows defaults to 25.
+func WithRows(opt int) EditorOption {
+	return func(e *Editor) {
+		e.rows = opt
+	}
+}
+
+// WidthHeight sets the image height of the editor.
+// If WithRows is set, the font is scaled appropriately to the height.
+// If WithRows is not set, the maximum number of rows that would fit
+// are used, with any additional padding to the bottom of the editor.
+// If not set, see the 'WithRows()' option for the calculation.
+func WithHeight(opt int) EditorOption {
+	return func(e *Editor) {
+		e.height = opt
+	}
+}
+
+// WithColumns sets the total number of columns in the editor, including
+// the line-number area, if enabled. If set to < 0, then:
+//   - if WithWidth is set, then the maximum number of columns that would
+//     fit, based on font advance of the glyph '0', is used.
+//   - if WithWidth is not set, then the number of columns defaults to 80.
+func WithColumns(opt int) EditorOption {
+	return func(e *Editor) {
+		e.cols = opt
+	}
+}
+
+// WidthWidth sets the image width of the editor.
+// If WithColumns is set, the font is scaled appropriately to the width.
+// If WithColumns is not set, the maximum number of columns that would fit
+// are used, with any additional padding to the bottom of the editor.
+// If not set, see the 'WithColumns()' option for the calculation.
+func WithWidth(opt int) EditorOption {
+	return func(e *Editor) {
+		e.height = opt
+	}
+}
+
+// WithWidthPadding sets the left and right side padding, in pixels.
+// If not set, the default is 1/2 of the width of the text advance
+// of the font's rune '0'.
+func WithWithPadding(opt int) EditorOption {
+	return func(e *Editor) {
+		e.width_padding = opt
+	}
+}
+
+// NewEditor creates a new editor. See the EditorOption type for
+// available options that can be passed to change its defaults.
+//
+// If neither the WithHeight nor WithRows options are set, the editor
+// defaults to 25 rows.
+// The resulting image width is `rows * font.Face.Metrics().Height`
+//
+// If neither the WithWidth nor the WithCols options are set, the
+// editor defaults to 80 columns. The resulting image width
+// is `cols * font.Face.GlyphAdvance('0')`
+func NewEditor(options ...EditorOption) (e *Editor) {
+	e = &Editor{
+		rows:          -1,
+		cols:          -1,
+		width:         -1,
+		height:        -1,
+		width_padding: -1,
 	}
 
-	metrics := e.FontFace.Metrics()
-	advance, _ := e.FontFace.GlyphAdvance('0')
+	WithContent(&dummyContent{})(e)
+	WithClipboard(&dummyContent{})(e)
+	WithFontFace(bitmapfont.Face)(e)
+	WithFontColor(color.Black)(e)
+	WithBackgroundColor(color.White)(e)
+	WithCursorColor(color.RGBA{0, 0, 0, 90})(e)
+	WithHighlightColor(color.RGBA{0, 0, 200, 70})(e)
+	WithSearchColor(color.RGBA{0, 200, 0, 70})(e)
 
-	return FontInfo{
-		ascent: metrics.Ascent.Ceil(),
-		xUnit:  advance.Ceil(),
-		yUnit:  metrics.Height.Ceil(),
+	for _, opt := range options {
+		opt(e)
 	}
+
+	// Determine padding.
+	if e.width_padding < 0 {
+		e.width_padding = e.font_info.xUnit / 2
+	}
+
+	if e.top_bar {
+		e.top_padding = int(float64(e.font_info.yUnit) * 1.25)
+	}
+
+	if e.bot_bar {
+		e.bot_padding = int(float64(e.font_info.yUnit) * 1.25)
+	}
+
+	// Set geometry defaults.
+	if e.rows < 0 {
+		if e.height < 0 {
+			e.rows = EDITOR_DEFAULT_ROWS
+		} else {
+			e.rows = (e.height - (e.top_padding + e.bot_padding)) / e.font_info.yUnit
+		}
+	}
+
+	if e.cols < 0 {
+		if e.width < 0 {
+			e.cols = EDITOR_DEFAULT_COLS
+		} else {
+			e.cols = (e.width - e.width_padding*2) / e.font_info.xUnit
+		}
+	}
+
+	if e.width < 0 {
+		e.width = e.font_info.xUnit*e.cols + e.width_padding*2
+	}
+
+	if e.height < 0 {
+		e.height = e.font_info.yUnit*e.rows + e.top_padding + e.bot_padding
+	}
+
+	text_height := e.height - (e.top_padding + e.bot_padding)
+	text_width := e.width - (e.width_padding * 2)
+
+	// Clamp rows and cols to fit.
+	if e.rows > text_height/e.font_info.yUnit {
+		e.rows = text_height / e.font_info.yUnit
+	}
+
+	if e.cols > text_width/e.font_info.xUnit {
+		e.cols = text_width / e.font_info.xUnit
+	}
+
+	// Load content.
+	e.Load()
+
+	return e
 }
 
 func (e *Editor) SearchMode() {
@@ -224,8 +450,8 @@ func (e *Editor) SetModified() {
 
 func (e *Editor) Load() error {
 	var b []byte
-	if e.Content != nil {
-		b = e.Content.ReadText()
+	if e.content != nil {
+		b = e.content.ReadText()
 	}
 
 	source := string(b)
@@ -447,6 +673,9 @@ func (e *Editor) handleRune(r rune) {
 }
 
 func (e *Editor) Update() error {
+	// Update the internal image when complete.
+	defer e.updateImage()
+
 	// // Log key number
 	// for i := 0; i < int(ebiten.KeyMax); i++ {
 	// 	if inpututil.IsKeyJustPressed(ebiten.Key(i)) {
@@ -454,11 +683,6 @@ func (e *Editor) Update() error {
 	// 		return nil
 	// 	}
 	// }
-
-	// If no clipboard is set, use a local clipboard.
-	if e.Clipboard == nil {
-		e.Clipboard = &localClipboard{}
-	}
 
 	// Modifiers
 	command := ebiten.IsKeyPressed(ebiten.KeyMeta) || ebiten.IsKeyPressed(ebiten.KeyControl)
@@ -525,8 +749,8 @@ func (e *Editor) Update() error {
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		allRunes := e.GetAllRunes()
 
-		if e.Content != nil {
-			e.Content.WriteText([]byte(string(allRunes)))
+		if e.content != nil {
+			e.content.WriteText([]byte(string(allRunes)))
 			e.modified = false
 		}
 
@@ -542,7 +766,7 @@ func (e *Editor) Update() error {
 
 	// Paste
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyV) {
-		pasteBytes := e.Clipboard.ReadText()
+		pasteBytes := e.clipboard.ReadText()
 		rs := []rune{}
 		for _, r := range string(pasteBytes) {
 			rs = append(rs, r)
@@ -559,7 +783,7 @@ func (e *Editor) Update() error {
 			return nil
 		}
 
-		e.Clipboard.WriteText([]byte(string(copyRunes)))
+		e.clipboard.WriteText([]byte(string(copyRunes)))
 
 		e.StoreUndoAction(e.DeleteHighlighted())
 		e.ResetHighlight()
@@ -575,7 +799,7 @@ func (e *Editor) Update() error {
 		}
 		copyRunes := e.GetHighlightedRunes()
 		copyBytes := []byte(string(copyRunes))
-		e.Clipboard.WriteText(copyBytes)
+		e.clipboard.WriteText(copyBytes)
 		return nil
 	}
 
@@ -1026,42 +1250,75 @@ func (e *Editor) GetLineNumberFromLine(line *Line) int {
 	return count
 }
 
-func (e *Editor) Draw(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{255, 255, 255, 0xff})
-	fontInfo := e.GetFontInfo()
-	screenInfo := e.GetScreenInfo(fontInfo)
+// Return the size in pixels of the editor.
+func (e *Editor) Size() (width, height int) {
+	return e.width, e.height
+}
 
-	xUnit := fontInfo.xUnit
-	yUnit := fontInfo.yUnit
-	fontAscent := fontInfo.ascent
+// Image returns the internal image.
+func (e *Editor) Draw(screen *ebiten.Image) {
+	// Scale editor to the screen region we want to draw into.
+	im_width, im_height := screen.Size()
+	sc_width := float64(im_width) / float64(e.width)
+	sc_height := float64(im_height) / float64(e.height)
+	opts := ebiten.DrawImageOptions{}
+	opts.GeoM.Scale(sc_width, sc_height)
+	screen.DrawImage(e.screen, &opts)
+}
+
+// updateImage updates the internal image.
+func (e *Editor) updateImage() {
+	// Generate an internal image, if we don't have one.
+	if e.screen == nil {
+		e.screen = ebiten.NewImage(e.width, e.height)
+	}
+	screen := e.screen
+
+	// Draw the background
+	if e.background_image != nil {
+		bg_width, bg_height := e.background_image.Size()
+		sc_width := float64(e.width) / float64(bg_width)
+		sc_height := float64(e.height) / float64(bg_height)
+		opts := ebiten.DrawImageOptions{}
+		opts.GeoM.Scale(sc_width, sc_height)
+		e.screen.DrawImage(e.background_image, &opts)
+	}
+
+	// Collect font metrics.
+	xUnit := e.font_info.xUnit
+	yUnit := e.font_info.yUnit
+	fontAscent := e.font_info.ascent
+	textColor := e.font_color
 
 	// Handle top bar
-	modifiedText := ""
-	if e.modified {
-		modifiedText = "(modified)"
+	if e.top_bar {
+		modifiedText := ""
+		if e.modified {
+			modifiedText = "(modified)"
+		}
+
+		topBar := ">"
+		if e.mode == SEARCH_MODE {
+			topBar = string(append([]rune(topBar), e.searchTerm...))
+		} else {
+			topBar = fmt.Sprintf("%s %s", e.content_name, modifiedText)
+		}
+
+		text.Draw(screen, string(topBar), e.font_info.face,
+			e.width_padding, fontAscent,
+			textColor)
+		ebitenutil.DrawLine(e.screen, 0, float64(yUnit+1), float64(e.width), float64(yUnit+1), textColor)
 	}
 
-	topBar := ">"
-	if e.mode == SEARCH_MODE {
-		topBar = string(append([]rune(topBar), e.searchTerm...))
-	} else {
-		topBar = fmt.Sprintf("%s %s", e.FileName, modifiedText)
+	if e.bot_bar {
+		// Handle bottom bar
+		botBar := fmt.Sprintf("(x)cut (c)opy (v)paste (s)ave (q)uit (f)search [%v:%v:%v] ", e.GetLineNumber()+1, e.cursor.x+1, e.cursor.line.values[e.cursor.x])
+		text.Draw(screen, string(botBar), e.font_info.face,
+			e.width_padding, e.height-yUnit+fontAscent,
+			textColor)
+
+		ebitenutil.DrawLine(screen, 0, float64(e.height-yUnit-2), float64(e.width), float64(e.height-yUnit-2), textColor)
 	}
-
-	textColor := color.RGBA{0, 0, 0, 100}
-
-	text.Draw(screen, string(topBar), e.FontFace,
-		screenInfo.xPadding, fontAscent,
-		textColor)
-	ebitenutil.DrawLine(screen, 0, float64(yUnit+1), float64(screenInfo.xLayout), float64(yUnit+1), textColor)
-
-	// Handle bottom bar
-	botBar := fmt.Sprintf("(x)cut (c)opy (v)paste (s)ave (q)uit (f)search [%v:%v:%v] ", e.GetLineNumber()+1, e.cursor.x+1, e.cursor.line.values[e.cursor.x])
-	text.Draw(screen, string(botBar), e.FontFace,
-		screenInfo.xPadding, screenInfo.yLayout-yUnit+fontAscent,
-		textColor)
-
-	ebitenutil.DrawLine(screen, 0, float64(screenInfo.yLayout-yUnit-2), float64(screenInfo.xLayout), float64(screenInfo.yLayout-yUnit-2), textColor)
 
 	// Handle all lines
 	curLine := e.start
@@ -1069,21 +1326,21 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 
 	// Find the screen chunk to render
 	lineNum := e.GetLineNumber()
-	screenChunksToSkip := lineNum / screenInfo.lineSlots
-	for i := 0; i < screenChunksToSkip*screenInfo.lineSlots; i++ {
+	screenChunksToSkip := lineNum / e.rows
+	for i := 0; i < screenChunksToSkip*e.rows; i++ {
 		// Skip to that screen chunk
 		curLine = curLine.next
 	}
 
 	for curLine != nil {
 		// Don't render outside the line area
-		if y == screenInfo.lineSlots {
+		if y == e.rows {
 			break
 		}
 
 		// Handle each line (only render the visible section)
 		xStart := 0
-		charactersPerScreen := int(float64(screenInfo.xLayout-screenInfo.xPadding*2) / float64(xUnit))
+		charactersPerScreen := int(float64(e.width-e.width_padding*2) / float64(xUnit))
 		if e.cursor.line == curLine && e.cursor.x > charactersPerScreen {
 			xStart = ((e.cursor.x / charactersPerScreen) * charactersPerScreen) + 1
 		}
@@ -1099,13 +1356,12 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 					// Draw blue-y purple highlight background
 					ebitenutil.DrawRect(
 						screen,
-						float64(x*xUnit+screenInfo.xPadding),
-						float64(y*yUnit+screenInfo.yPadding),
+						float64(x*xUnit+e.width_padding),
+						float64(y*yUnit+e.top_padding),
 						float64(xUnit),
 						float64(yUnit),
-						color.RGBA{
-							0, 0, 200, 70,
-						})
+						e.select_color,
+					)
 				}
 			}
 
@@ -1114,12 +1370,12 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 				if _, ok := searchHighlight[lineIndex]; ok {
 					// Draw green highlight background
 					ebitenutil.DrawRect(screen,
-						float64(x*xUnit+screenInfo.xPadding),
-						float64(y*yUnit+screenInfo.yPadding),
+						float64(x*xUnit+e.width_padding),
+						float64(y*yUnit+e.top_padding),
 						float64(xUnit),
-						float64(yUnit), color.RGBA{
-							0, 200, 0, 70,
-						})
+						float64(yUnit),
+						e.search_color,
+					)
 				}
 			}
 
@@ -1127,17 +1383,16 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 			if e.cursor.line == curLine && lineIndex == e.cursor.x {
 				// Draw gray cursor background
 				ebitenutil.DrawRect(screen,
-					float64(x*xUnit+screenInfo.xPadding),
-					float64(y*yUnit+screenInfo.yPadding),
+					float64(x*xUnit+e.width_padding),
+					float64(y*yUnit+e.top_padding),
 					float64(xUnit),
 					float64(yUnit),
-					color.RGBA{
-						0, 0, 0, 90,
-					})
+					e.cursor_color,
+				)
 			}
 		}
-		text.Draw(screen, string(curLine.values[xStart:]), e.FontFace,
-			screenInfo.xPadding, screenInfo.yPadding+y*yUnit+fontAscent,
+		text.Draw(screen, string(curLine.values[xStart:]), e.font_info.face,
+			e.width_padding, e.top_padding+y*yUnit+fontAscent,
 			textColor)
 
 		curLine = curLine.next
@@ -1146,8 +1401,7 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 }
 
 func (e *Editor) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	_xScreen, _yScreen := ebiten.WindowSize()
-	return _xScreen / 2, _yScreen / 2
+	return outsideWidth, outsideHeight
 }
 
 // Supports macOS UK keyboard

@@ -6,13 +6,13 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"io"
+	"log"
 	"os"
 	"path"
 
-    "github.com/healeycodes/noter"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/healeycodes/noter"
 	"golang.design/x/clipboard"
 )
 
@@ -78,20 +78,19 @@ func main() {
 	}
 
 	content := &fileContent{FilePath: filePath}
-	editor := &noter.Editor{
-		Clipboard: &clipBoard{}, // Use system clipboard.
-		Content:   content,
-		FileName:  content.FileName(),
-	}
 
-	err := editor.Load()
-	if err != nil {
-		log.Fatalln(err)
-	}
+	editor := noter.NewEditor(
+		noter.WithClipboard(&clipBoard{}),
+		noter.WithContent(content),
+		noter.WithContentName(content.FileName()),
+		noter.WithTopBar(true),
+		noter.WithBottomBar(true),
+	)
 
-	ebiten.SetWindowSize(800, 500)
+	width, height := editor.Size()
+	ebiten.SetWindowSize(width*2, height*2)
 	ebiten.SetWindowTitle("noter")
-	if err = ebiten.RunGame(editor); err != nil {
+	if err := ebiten.RunGame(editor); err != nil {
 		log.Fatalln(err)
 	}
 }
