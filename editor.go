@@ -114,8 +114,19 @@ const (
 
 var noop = func() bool { return false }
 
-// Editor is an ebiten.Game compliant interface, which presents a
-// simple text editor.
+// Editor is a simple text editor, compliant to the ebiten.Game interface.
+//
+// The Meta or Control key can be used with the following command keys:
+//
+//	| Keystroke  | Action |
+//	| ---        | ---    |
+//	| COMMAND-S  | Save the content. |
+//	| COMMAND-L  | Load the content. |
+//	| COMMAND-C  | Copy the selection to clipboard. |
+//	| COMMAND-V  | Paste clipboard into the selection/current cursor. |
+//	| COMMAND-X  | Cut the selection, saving a copy into the clipboard. |
+//	| COMMAND-F  | Find text in the content. |
+//	| COMMAND-Q  | Quit the editor. |
 type Editor struct {
 	// Settable options
 	font_info        *fontInfo
@@ -209,6 +220,7 @@ func WithFontFace(opt font.Face) EditorOption {
 }
 
 // WithFontColor sets the color of the text.
+// It is recommended to have an Alpha component of 255.
 func WithFontColor(opt color.Color) EditorOption {
 	return func(e *Editor) {
 		e.font_color = opt
@@ -216,6 +228,7 @@ func WithFontColor(opt color.Color) EditorOption {
 }
 
 // WithHighlightColor sets the color of the select highlight over the text.
+// It is recommended to have an Alpha component of 70.
 func WithHighlightColor(opt color.Color) EditorOption {
 	return func(e *Editor) {
 		e.select_color = opt
@@ -223,6 +236,7 @@ func WithHighlightColor(opt color.Color) EditorOption {
 }
 
 // WithSearchColor sets the color of the search highlight over the text.
+// It is recommended to have an Alpha component of 70.
 func WithSearchColor(opt color.Color) EditorOption {
 	return func(e *Editor) {
 		e.search_color = opt
@@ -230,6 +244,7 @@ func WithSearchColor(opt color.Color) EditorOption {
 }
 
 // WithCursorColor sets the color of the cursor over the text.
+// It is recommended to have an Alpha component of 90.
 func WithCursorColor(opt color.Color) EditorOption {
 	return func(e *Editor) {
 		e.cursor_color = opt
