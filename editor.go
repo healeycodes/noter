@@ -1387,6 +1387,14 @@ func (e *Editor) colorSelected(col, row int, runes []rune, selected map[int]bool
 	}
 }
 
+// SetContentName updates the top bar's content name.
+func (e *Editor) SetContentName(content_name string) {
+	e.content_name = content_name
+
+	// Update the backing image.
+	e.updateImage()
+}
+
 // Return the internal image of the editor.
 func (e *Editor) Image() (img *ebiten.Image) {
 	return e.screen
