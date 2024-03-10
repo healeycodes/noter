@@ -405,6 +405,9 @@ func NewEditor(options ...EditorOption) (e *Editor) {
 		e.cols = text_width / e.font_info.xUnit
 	}
 
+	// Create the internal image
+	e.screen = ebiten.NewImage(e.width, e.height)
+
 	// Load content.
 	e.Load()
 
@@ -1322,10 +1325,6 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 
 // updateImage updates the internal image.
 func (e *Editor) updateImage() {
-	// Generate an internal image, if we don't have one.
-	if e.screen == nil {
-		e.screen = ebiten.NewImage(e.width, e.height)
-	}
 	screen := e.screen
 
 	// Draw the background
