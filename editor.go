@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"image/color"
 	"log"
-	"os"
 	"sort"
 	"strings"
 	"unicode"
@@ -159,10 +158,22 @@ type Editor struct {
 	highlighted      map[*editorLine]map[int]bool
 	searchHighlights map[*editorLine]map[int]bool
 	undoStack        []func() bool
+	quit             func()
 }
 
 // EditorOption is an option that can be sent to NewEditor()
 type EditorOption func(e *Editor)
+
+// WithQuit sets the function to call when ^Q is pressed,
+// nominally to quit the editor. The default is no action.
+func WithQuit(opt func()) EditorOption {
+	return func(e *Editor) {
+		if opt == nil {
+			opt = func() {}
+		}
+		e.quit = opt
+	}
+}
 
 // WithContent sets the content accessor, and permits saving and loading.
 // If set to nil, an in-memory content manager is used.
@@ -342,6 +353,7 @@ func NewEditor(options ...EditorOption) (e *Editor) {
 		width_padding: -1,
 	}
 
+	WithQuit(nil)(e)
 	WithContent(nil)(e)
 	WithClipboard(nil)(e)
 	WithFontFace(nil)(e)
@@ -797,7 +809,7 @@ func (e *Editor) Update() error {
 
 	// Quit
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyQ) {
-		os.Exit(0)
+		e.quit()
 		return nil
 	}
 

@@ -124,6 +124,7 @@ func execute(file_path string, opts *options) (err error) {
 		noter.WithTopBar(true),
 		noter.WithBottomBar(true),
 		noter.WithFontFace(font_face),
+		noter.WithQuit(func() { os.Exit(0) }),
 	)
 
 	width, height := editor.Size()
