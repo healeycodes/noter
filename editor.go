@@ -391,7 +391,7 @@ func NewEditor(options ...EditorOption) (e *Editor) {
 	}
 
 	// Load content.
-	e.loadContent()
+	e.Load()
 
 	return e
 }
@@ -463,13 +463,34 @@ func (e *Editor) setModified() {
 	e.modified = true
 }
 
-func (e *Editor) loadContent() error {
-	var b []byte
+// Save saves the text to the Content assigned to the editor.
+func (e *Editor) Save() {
 	if e.content != nil {
-		b = e.content.ReadText()
+		e.content.WriteText(e.ReadText())
+		e.modified = false
 	}
+}
 
-	source := string(b)
+// Load loads the text from the Content assigned to the editor.
+func (e *Editor) Load() {
+	if e.content != nil {
+		e.WriteText(e.content.ReadText())
+	}
+}
+
+// ReadText returns all of the text in the editor.
+// Note that this does not clear the 'modified' state of the editor.
+func (e *Editor) ReadText() []byte {
+	allRunes := e.getAllRunes()
+
+	return []byte(string(allRunes))
+}
+
+// WriteText replaces all of the text in the editor.
+// Note that this clears the 'modified' state of the editor, and disables
+// all selection highlighting.
+func (e *Editor) WriteText(text []byte) {
+	source := string(text)
 
 	e.editMode()
 	e.undoStack = make([]func() bool, 0)
@@ -502,8 +523,6 @@ func (e *Editor) loadContent() error {
 	if currentLine.prev != nil {
 		currentLine.prev.next = nil
 	}
-
-	return nil
 }
 
 func (e *Editor) search() {
@@ -763,13 +782,7 @@ func (e *Editor) Update() error {
 
 	// Save
 	if command && inpututil.IsKeyJustPressed(ebiten.KeyS) {
-		allRunes := e.getAllRunes()
-
-		if e.content != nil {
-			e.content.WriteText([]byte(string(allRunes)))
-			e.modified = false
-		}
-
+		e.Save()
 		return nil
 	}
 
