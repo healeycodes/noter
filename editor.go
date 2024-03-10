@@ -1312,15 +1312,22 @@ func (e *Editor) Size() (width, height int) {
 	return e.width, e.height
 }
 
+// copyIntoImageStretched copies the src image into dst,
+// such that src is stretched to fit dst.
+func copyIntoImageStretched(dst, src *ebiten.Image) {
+	src_width, src_height := src.Size()
+	dst_width, dst_height := dst.Size()
+	scale_width := float64(dst_width) / float64(src_width)
+	scale_height := float64(dst_height) / float64(src_height)
+	opts := ebiten.DrawImageOptions{}
+	opts.GeoM.Scale(scale_width, scale_height)
+	dst.DrawImage(src, &opts)
+}
+
 // Draw the editor onto the screen, scaled to full size.
 func (e *Editor) Draw(screen *ebiten.Image) {
 	// Scale editor to the screen region we want to draw into.
-	im_width, im_height := screen.Size()
-	sc_width := float64(im_width) / float64(e.width)
-	sc_height := float64(im_height) / float64(e.height)
-	opts := ebiten.DrawImageOptions{}
-	opts.GeoM.Scale(sc_width, sc_height)
-	screen.DrawImage(e.screen, &opts)
+	copyIntoImageStretched(screen, e.screen)
 }
 
 // updateImage updates the internal image.
@@ -1329,12 +1336,7 @@ func (e *Editor) updateImage() {
 
 	// Draw the background
 	if e.background_image != nil {
-		bg_width, bg_height := e.background_image.Size()
-		sc_width := float64(e.width) / float64(bg_width)
-		sc_height := float64(e.height) / float64(bg_height)
-		opts := ebiten.DrawImageOptions{}
-		opts.GeoM.Scale(sc_width, sc_height)
-		e.screen.DrawImage(e.background_image, &opts)
+		copyIntoImageStretched(e.screen, e.background_image)
 	}
 
 	// Collect font metrics.
