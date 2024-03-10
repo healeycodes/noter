@@ -154,8 +154,12 @@ type Editor struct {
 type EditorOption func(e *Editor)
 
 // WithContent sets the content accessor, and permits saving and loading.
+// If set to nil, an in-memory content manager is used.
 func WithContent(opt Content) EditorOption {
 	return func(e *Editor) {
+		if opt == nil {
+			opt = &dummyContent{}
+		}
 		e.content = opt
 	}
 }
@@ -182,15 +186,24 @@ func WithBottomBar(enabled bool) EditorOption {
 }
 
 // WithClipboard sets the clipboard accessor.
+// If set to nil, an in-memory content manager is used.
 func WithClipboard(opt Content) EditorOption {
 	return func(e *Editor) {
+		if opt == nil {
+			opt = &dummyContent{}
+		}
 		e.clipboard = opt
 	}
 }
 
 // WithFontFace set the default font.
+// If set to nil, the monospace font `github.com/hajimehoshi/bitmapfont/v3`
+// is used.
 func WithFontFace(opt font.Face) EditorOption {
 	return func(e *Editor) {
+		if opt == nil {
+			opt = bitmapfont.Face
+		}
 		e.font_info = newfontInfo(opt)
 	}
 }
@@ -230,7 +243,7 @@ func WithBackgroundColor(opt color.Color) EditorOption {
 		// We will scale it to fit.
 		img := ebiten.NewImage(1, 1)
 		img.Fill(opt)
-		e.background_image = img
+		WithBackgroundImage(img)(e)
 	}
 }
 
@@ -314,9 +327,9 @@ func NewEditor(options ...EditorOption) (e *Editor) {
 		width_padding: -1,
 	}
 
-	WithContent(&dummyContent{})(e)
-	WithClipboard(&dummyContent{})(e)
-	WithFontFace(bitmapfont.Face)(e)
+	WithContent(nil)(e)
+	WithClipboard(nil)(e)
+	WithFontFace(nil)(e)
 	WithFontColor(color.Black)(e)
 	WithBackgroundColor(color.White)(e)
 	WithCursorColor(color.RGBA{0, 0, 0, 90})(e)
