@@ -541,6 +541,9 @@ func (e *Editor) WriteText(text []byte) {
 	if currentLine.prev != nil {
 		currentLine.prev.next = nil
 	}
+
+	// Refresh the internal image.
+	e.updateImage()
 }
 
 func (e *Editor) search() {
@@ -1370,6 +1373,11 @@ func (e *Editor) colorSelected(col, row int, runes []rune, selected map[int]bool
 	if start >= 0 {
 		draw_highlight(start, len(runes)-1)
 	}
+}
+
+// Return the internal image of the editor.
+func (e *Editor) Image() (img *ebiten.Image) {
+	return e.screen
 }
 
 // updateImage updates the internal image.
