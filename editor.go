@@ -1330,6 +1330,48 @@ func (e *Editor) Draw(screen *ebiten.Image) {
 	copyIntoImageStretched(screen, e.screen)
 }
 
+// Color a line based on a selection highlighing map.
+func (e *Editor) colorSelected(col, row int, runes []rune, selected map[int]bool, selected_color color.Color) {
+	start := -1
+	fontFace := e.font_info.face
+
+	draw_highlight := func(start, end int) {
+		// End of a selection - highlight it!
+		x_offset := e.width_padding
+		x_offset += font.MeasureString(fontFace, string(runes[col:col+start])).Floor()
+		x_advance := font.MeasureString(fontFace, string(runes[col+start:col+end])).Ceil()
+
+		// Draw the selection highlight background
+		ebitenutil.DrawRect(
+			e.screen,
+			float64(x_offset),
+			float64(row*e.font_info.yUnit+e.top_padding),
+			float64(x_advance),
+			float64(e.font_info.yUnit),
+			selected_color,
+		)
+	}
+
+	for x, _ := range runes[col:] {
+		_, ok := selected[col+x]
+		if ok {
+			if start < 0 {
+				// Beginning of a selection
+				start = x
+			}
+		} else {
+			if start >= 0 {
+				draw_highlight(start, x)
+				start = -1
+			}
+		}
+	}
+
+	if start >= 0 {
+		draw_highlight(start, len(runes)-1)
+	}
+}
+
 // updateImage updates the internal image.
 func (e *Editor) updateImage() {
 	screen := e.screen
@@ -1344,6 +1386,7 @@ func (e *Editor) updateImage() {
 	yUnit := e.font_info.yUnit
 	fontAscent := e.font_info.ascent
 	textColor := e.font_color
+	fontFace := e.font_info.face
 
 	// Handle top bar
 	if e.top_bar {
@@ -1400,53 +1443,29 @@ func (e *Editor) updateImage() {
 			xStart = ((e.cursor.x / charactersPerScreen) * charactersPerScreen) + 1
 		}
 
-		for x, _ := range curLine.values[xStart:] {
-			// `x` is the render location
-			// `lineIndex` is the line position
-			lineIndex := x + xStart
-
-			// Render highlighting (if any)
-			if highlight, ok := e.highlighted[curLine]; ok {
-				if _, ok := highlight[lineIndex]; ok {
-					// Draw blue-y purple highlight background
-					ebitenutil.DrawRect(
-						screen,
-						float64(x*xUnit+e.width_padding),
-						float64(y*yUnit+e.top_padding),
-						float64(xUnit),
-						float64(yUnit),
-						e.select_color,
-					)
-				}
-			}
-
-			// Render search highlighting (if any)
-			if searchHighlight, ok := e.searchHighlights[curLine]; ok {
-				if _, ok := searchHighlight[lineIndex]; ok {
-					// Draw green highlight background
-					ebitenutil.DrawRect(screen,
-						float64(x*xUnit+e.width_padding),
-						float64(y*yUnit+e.top_padding),
-						float64(xUnit),
-						float64(yUnit),
-						e.search_color,
-					)
-				}
-			}
-
-			// Render cursor
-			if e.cursor.line == curLine && lineIndex == e.cursor.x {
-				// Draw gray cursor background
-				ebitenutil.DrawRect(screen,
-					float64(x*xUnit+e.width_padding),
-					float64(y*yUnit+e.top_padding),
-					float64(xUnit),
-					float64(yUnit),
-					e.cursor_color,
-				)
-			}
+		// Render highlighting (if any)
+		if highlight, ok := e.highlighted[curLine]; ok {
+			e.colorSelected(xStart, y, curLine.values, highlight, e.select_color)
 		}
-		text.Draw(screen, string(curLine.values[xStart:]), e.font_info.face,
+
+		// Render search highlighting (if any)
+		if searchHighlight, ok := e.searchHighlights[curLine]; ok {
+			e.colorSelected(xStart, y, curLine.values, searchHighlight, e.search_color)
+		}
+
+		// Render cursor
+		if e.cursor.line == curLine {
+			// We append a '0' to the line to highlight, so that a
+			// cursor at the end of a line actually is a non-zero width.
+			runes := append(curLine.values, '0')
+
+			cursorHighlight := map[int]bool{e.cursor.x: true}
+
+			e.colorSelected(xStart, y, runes, cursorHighlight, e.cursor_color)
+		}
+
+		// Render the text.
+		text.Draw(screen, string(curLine.values[xStart:]), fontFace,
 			e.width_padding, e.top_padding+y*yUnit+fontAscent,
 			textColor)
 

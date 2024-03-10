@@ -14,6 +14,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/healeycodes/noter"
 	"golang.design/x/clipboard"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/opentype"
 )
 
 type clipBoard struct {
@@ -79,12 +81,15 @@ func main() {
 
 	content := &fileContent{FilePath: filePath}
 
+	font, _ := opentype.Parse(goregular.TTF)
+	face, _ := opentype.NewFace(font, nil)
 	editor := noter.NewEditor(
 		noter.WithClipboard(&clipBoard{}),
 		noter.WithContent(content),
 		noter.WithContentName(content.FileName()),
 		noter.WithTopBar(true),
 		noter.WithBottomBar(true),
+		noter.WithFontFace(face),
 	)
 
 	width, height := editor.Size()
