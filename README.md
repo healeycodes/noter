@@ -9,7 +9,8 @@ A text editor for macOS. Built using the [Ebitengine](https://github.com/hajimeh
 
 It's a little bit like `nano`.
 
-![A screenshot of the editor running. It looks like nano. It has a text file called "A Bird, came down the Walk" opened.](https://github.com/healeycodes/noter/blob/main/preview.png)
+<img src="https://github.com/healeycodes/noter/blob/main/preview.png" alt="A screenshot of the editor running. It looks like nano. It has a text file called 'A Bird, came down the Walk' opened." width="535px">
+
 
 ## Shortcuts
 
