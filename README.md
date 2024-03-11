@@ -31,8 +31,6 @@ Command +
 
 ## Development
 
-Run the fonts build script `bash fonts.sh`
-
 Run the editor `go run github.com/healeycodes/noter/cmd/noter -- "A Bird, came down the Walk.txt"`
 
 ## Build
