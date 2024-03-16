@@ -802,7 +802,7 @@ func (e *Editor) Update() error {
 			return nil
 		}
 
-		// Undo
+		// Undo (may repeat)
 		if isKeyJustPressedOrRepeating(ebiten.KeyZ) {
 			e.editMode()
 			e.resetHighlight()
@@ -836,8 +836,8 @@ func (e *Editor) Update() error {
 			return nil
 		}
 
-		// Paste
-		if inpututil.IsKeyJustPressed(ebiten.KeyV) {
+		// Paste (may repeat)
+		if isKeyJustPressedOrRepeating(ebiten.KeyV) {
 			pasteBytes := e.clipboard.ReadText()
 			rs := []rune{}
 			for _, r := range string(pasteBytes) {
