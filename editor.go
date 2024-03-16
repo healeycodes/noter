@@ -493,12 +493,19 @@ func (e *Editor) setModified() {
 	e.modified = true
 }
 
+// IsModified returns true if the editor is in modified state.
+func (e *Editor) IsModified() bool {
+	return e.modified
+}
+
 // Save saves the text to the Content assigned to the editor.
+// This clears the 'modified' bit also.
 func (e *Editor) Save() {
 	if e.content != nil {
 		e.content.WriteText(e.ReadText())
-		e.modified = false
 	}
+
+	e.modified = false
 }
 
 // Load loads the text from the Content assigned to the editor.
