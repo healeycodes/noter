@@ -742,12 +742,14 @@ func (e *Editor) handleRune(r rune) {
 // Determine if the key has just been pressed, or is repeating
 func isKeyJustPressedOrRepeating(key ebiten.Key) bool {
 	tps := ebiten.ActualTPS()
-	if tps == 0 {
-		// Use the default of 60 ticks per second.
-		tps = 60
-	}
 	delay_ticks := int(0.500 /*sec*/ * tps)
 	interval_ticks := int(0.050 /*sec*/ * tps)
+
+	// If tps is 0 or very small, provide reasonable defaults
+	if interval_ticks == 0 {
+		delay_ticks = 30
+		interval_ticks = 3
+	}
 
 	// Down for one tick? Then just pressed.
 	d := inpututil.KeyPressDuration(key)
