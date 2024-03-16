@@ -784,112 +784,120 @@ func (e *Editor) Update() error {
 	shift := ebiten.IsKeyPressed(ebiten.KeyShift)
 	option := ebiten.IsKeyPressed(ebiten.KeyAlt)
 
+	if command && !(shift || option) {
+		// Enter search mode
+		if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+			if e.mode == SEARCH_MODE {
+				e.editMode()
+			} else {
+				e.searchMode()
+			}
+			return nil
+		}
+
+		// Undo
+		if isKeyJustPressedOrRepeating(ebiten.KeyZ) {
+			e.editMode()
+			e.resetHighlight()
+
+			for len(e.undoStack) > 0 {
+				notNoop := e.undoStack[len(e.undoStack)-1]()
+				e.undoStack = e.undoStack[:len(e.undoStack)-1]
+				if notNoop {
+					break
+				}
+			}
+			return nil
+		}
+
+		// Quit
+		if inpututil.IsKeyJustPressed(ebiten.KeyQ) {
+			e.quit()
+			return nil
+		}
+
+		// Save
+		if inpututil.IsKeyJustPressed(ebiten.KeyS) {
+			e.Save()
+			return nil
+		}
+
+		// Highlight all
+		if inpututil.IsKeyJustPressed(ebiten.KeyA) {
+			e.editMode()
+			e.fnSelectAll()
+			return nil
+		}
+
+		// Paste
+		if inpututil.IsKeyJustPressed(ebiten.KeyV) {
+			pasteBytes := e.clipboard.ReadText()
+			rs := []rune{}
+			for _, r := range string(pasteBytes) {
+				rs = append(rs, r)
+			}
+			e.storeUndoAction(e.fnHandleRuneMulti(rs))
+			e.setModified()
+			return nil
+		}
+
+		// Cut highlight
+		if inpututil.IsKeyJustPressed(ebiten.KeyX) {
+			copyRunes := e.getHighlightedRunes()
+			if len(copyRunes) == 0 {
+				return nil
+			}
+
+			e.clipboard.WriteText([]byte(string(copyRunes)))
+
+			e.storeUndoAction(e.fnDeleteHighlighted())
+			e.resetHighlight()
+
+			e.setModified()
+			return nil
+		}
+
+		// Copy highlight
+		if inpututil.IsKeyJustPressed(ebiten.KeyC) {
+			if len(e.highlighted) == 0 {
+				return nil
+			}
+			copyRunes := e.getHighlightedRunes()
+			copyBytes := []byte(string(copyRunes))
+			e.clipboard.WriteText(copyBytes)
+			return nil
+		}
+
+		return nil
+	}
+
 	// Arrows
 	right := isKeyJustPressedOrRepeating(ebiten.KeyArrowRight)
 	left := isKeyJustPressedOrRepeating(ebiten.KeyArrowLeft)
 	up := isKeyJustPressedOrRepeating(ebiten.KeyArrowUp)
 	down := isKeyJustPressedOrRepeating(ebiten.KeyArrowDown)
 
-	// Enter search mode
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyF) {
-		if e.mode == SEARCH_MODE {
+	if !(option || shift || command) {
+		// Exit search mode
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			e.editMode()
-		} else {
-			e.searchMode()
+			return nil
 		}
-		return nil
 	}
 
 	// Next/previous search match
-	if (up || down) && e.mode == SEARCH_MODE {
-		if up {
-			if e.searchIndex > -1 {
-				e.searchIndex--
+	if !(command || option || shift) {
+		if (up || down) && e.mode == SEARCH_MODE {
+			if up {
+				if e.searchIndex > -1 {
+					e.searchIndex--
+				}
+			} else if down {
+				e.searchIndex++
 			}
-		} else if down {
-			e.searchIndex++
-		}
-		e.search()
-		return nil
-	}
-
-	// Exit search mode
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		e.editMode()
-		return nil
-	}
-
-	// Undo
-	if command && isKeyJustPressedOrRepeating(ebiten.KeyZ) {
-		e.editMode()
-		e.resetHighlight()
-
-		for len(e.undoStack) > 0 {
-			notNoop := e.undoStack[len(e.undoStack)-1]()
-			e.undoStack = e.undoStack[:len(e.undoStack)-1]
-			if notNoop {
-				break
-			}
-		}
-		return nil
-	}
-
-	// Quit
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyQ) {
-		e.quit()
-		return nil
-	}
-
-	// Save
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyS) {
-		e.Save()
-		return nil
-	}
-
-	// Highlight all
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyA) {
-		e.editMode()
-		e.fnSelectAll()
-		return nil
-	}
-
-	// Paste
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyV) {
-		pasteBytes := e.clipboard.ReadText()
-		rs := []rune{}
-		for _, r := range string(pasteBytes) {
-			rs = append(rs, r)
-		}
-		e.storeUndoAction(e.fnHandleRuneMulti(rs))
-		e.setModified()
-		return nil
-	}
-
-	// Cut highlight
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyX) {
-		copyRunes := e.getHighlightedRunes()
-		if len(copyRunes) == 0 {
+			e.search()
 			return nil
 		}
-
-		e.clipboard.WriteText([]byte(string(copyRunes)))
-
-		e.storeUndoAction(e.fnDeleteHighlighted())
-		e.resetHighlight()
-
-		e.setModified()
-		return nil
-	}
-
-	// Copy highlight
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyC) {
-		if len(e.highlighted) == 0 {
-			return nil
-		}
-		copyRunes := e.getHighlightedRunes()
-		copyBytes := []byte(string(copyRunes))
-		e.clipboard.WriteText(copyBytes)
-		return nil
 	}
 
 	// Handle movement
@@ -1034,7 +1042,7 @@ func (e *Editor) Update() error {
 						e.highlightLineToLeft()
 					}
 				}
-				// Instead of fixing position, we actually want the document end
+				// instead of fixing position, we actually want the document end
 				if shift {
 					e.highlightLineToRight()
 				}
@@ -1058,67 +1066,72 @@ func (e *Editor) Update() error {
 		return nil
 	}
 
-	// Enter
-	if isKeyJustPressedOrRepeating(ebiten.KeyEnter) {
-		if e.mode == SEARCH_MODE {
-			e.searchIndex++
-			e.search()
-		} else {
-			e.storeUndoAction(e.fnHandleRuneSingle('\n'))
-		}
-		return nil
-	}
-
-	// Tab
-	if isKeyJustPressedOrRepeating(ebiten.KeyTab) {
-		if e.mode == SEARCH_MODE {
-			e.searchIndex++
-			e.search()
+	if !(command || option || shift) {
+		// Enter
+		if isKeyJustPressedOrRepeating(ebiten.KeyEnter) {
+			if e.mode == SEARCH_MODE {
+				e.searchIndex++
+				e.search()
+			} else {
+				e.storeUndoAction(e.fnHandleRuneSingle('\n'))
+			}
 			return nil
 		}
-		// Just insert four spaces
-		for i := 0; i < 4; i++ {
-			e.storeUndoAction(e.fnHandleRuneSingle(' '))
-		}
-		return nil
-	}
 
-	// Backspace
-	if isKeyJustPressedOrRepeating(ebiten.KeyBackspace) {
-		if e.mode == SEARCH_MODE {
-			if len(e.searchTerm) > 0 {
-				e.searchTerm = e.searchTerm[:len(e.searchTerm)-1]
+		// Tab
+		if isKeyJustPressedOrRepeating(ebiten.KeyTab) {
+			if e.mode == SEARCH_MODE {
+				e.searchIndex++
+				e.search()
+				return nil
 			}
-			e.search()
+			// Just insert four spaces
+			for i := 0; i < 4; i++ {
+				e.storeUndoAction(e.fnHandleRuneSingle(' '))
+			}
 			return nil
 		}
-		// Delete all highlighted content
-		if len(e.highlighted) != 0 {
-			e.storeUndoAction(e.fnDeleteHighlighted())
-		} else {
-			// Or..
-			e.storeUndoAction(e.fnDeleteSinglePrevious())
-		}
 
-		e.resetHighlight()
-		e.setModified()
-		return nil
-	}
-
-	// Keys which are valid input
-	for i := 0; i < int(ebiten.KeyMax); i++ {
-		key := ebiten.Key(i)
-		if isKeyJustPressedOrRepeating(key) {
-			keyRune, printable := KeyToRune(key, shift)
-
-			// Skip unprintable keys (like Enter/Esc)
-			if !printable {
-				continue
+		// Backspace
+		if isKeyJustPressedOrRepeating(ebiten.KeyBackspace) {
+			if e.mode == SEARCH_MODE {
+				if len(e.searchTerm) > 0 {
+					e.searchTerm = e.searchTerm[:len(e.searchTerm)-1]
+				}
+				e.search()
+				return nil
+			}
+			// Delete all highlighted content
+			if len(e.highlighted) != 0 {
+				e.storeUndoAction(e.fnDeleteHighlighted())
+			} else {
+				// Or..
+				e.storeUndoAction(e.fnDeleteSinglePrevious())
 			}
 
-			e.storeUndoAction(e.fnHandleRuneSingle(keyRune))
+			e.resetHighlight()
+			e.setModified()
+			return nil
 		}
 	}
+
+	if !(command || option) {
+		// Keys which are valid input
+		for i := 0; i < int(ebiten.KeyMax); i++ {
+			key := ebiten.Key(i)
+			if isKeyJustPressedOrRepeating(key) {
+				keyRune, printable := KeyToRune(key, shift)
+
+				// Skip unprintable keys (like Enter/Esc)
+				if !printable {
+					continue
+				}
+
+				e.storeUndoAction(e.fnHandleRuneSingle(keyRune))
+			}
+		}
+	}
+
 	return nil
 }
 
