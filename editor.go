@@ -791,90 +791,89 @@ func (e *Editor) Update() error {
 	shift := ebiten.IsKeyPressed(ebiten.KeyShift)
 	option := ebiten.IsKeyPressed(ebiten.KeyAlt)
 
-	if command && !(shift || option) {
-		// Enter search mode
-		if inpututil.IsKeyJustPressed(ebiten.KeyF) {
-			if e.mode == SEARCH_MODE {
-				e.editMode()
-			} else {
-				e.searchMode()
-			}
-			return nil
-		}
+	isCommand := command && !(shift || option)
+	isOnly := !(command || shift || option)
 
-		// Undo (may repeat)
-		if isKeyJustPressedOrRepeating(ebiten.KeyZ) {
+	// Enter search mode
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyF) {
+		if e.mode == SEARCH_MODE {
 			e.editMode()
-			e.resetHighlight()
+		} else {
+			e.searchMode()
+		}
+		return nil
+	}
 
-			for len(e.undoStack) > 0 {
-				notNoop := e.undoStack[len(e.undoStack)-1]()
-				e.undoStack = e.undoStack[:len(e.undoStack)-1]
-				if notNoop {
-					break
-				}
+	// Undo (may repeat)
+	if isCommand && isKeyJustPressedOrRepeating(ebiten.KeyZ) {
+		e.editMode()
+		e.resetHighlight()
+
+		for len(e.undoStack) > 0 {
+			notNoop := e.undoStack[len(e.undoStack)-1]()
+			e.undoStack = e.undoStack[:len(e.undoStack)-1]
+			if notNoop {
+				break
 			}
+		}
+		return nil
+	}
+
+	// Quit
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyQ) {
+		e.quit()
+		return nil
+	}
+
+	// Save
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyS) {
+		e.Save()
+		return nil
+	}
+
+	// Highlight all
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyA) {
+		e.editMode()
+		e.fnSelectAll()
+		return nil
+	}
+
+	// Paste (may repeat)
+	if isCommand && isKeyJustPressedOrRepeating(ebiten.KeyV) {
+		pasteBytes := e.clipboard.ReadText()
+		rs := []rune{}
+		for _, r := range string(pasteBytes) {
+			rs = append(rs, r)
+		}
+		e.storeUndoAction(e.fnHandleRuneMulti(rs))
+		e.setModified()
+		return nil
+	}
+
+	// Cut highlight
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyX) {
+		copyRunes := e.getHighlightedRunes()
+		if len(copyRunes) == 0 {
 			return nil
 		}
 
-		// Quit
-		if inpututil.IsKeyJustPressed(ebiten.KeyQ) {
-			e.quit()
+		e.clipboard.WriteText([]byte(string(copyRunes)))
+
+		e.storeUndoAction(e.fnDeleteHighlighted())
+		e.resetHighlight()
+
+		e.setModified()
+		return nil
+	}
+
+	// Copy highlight
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyC) {
+		if len(e.highlighted) == 0 {
 			return nil
 		}
-
-		// Save
-		if inpututil.IsKeyJustPressed(ebiten.KeyS) {
-			e.Save()
-			return nil
-		}
-
-		// Highlight all
-		if inpututil.IsKeyJustPressed(ebiten.KeyA) {
-			e.editMode()
-			e.fnSelectAll()
-			return nil
-		}
-
-		// Paste (may repeat)
-		if isKeyJustPressedOrRepeating(ebiten.KeyV) {
-			pasteBytes := e.clipboard.ReadText()
-			rs := []rune{}
-			for _, r := range string(pasteBytes) {
-				rs = append(rs, r)
-			}
-			e.storeUndoAction(e.fnHandleRuneMulti(rs))
-			e.setModified()
-			return nil
-		}
-
-		// Cut highlight
-		if inpututil.IsKeyJustPressed(ebiten.KeyX) {
-			copyRunes := e.getHighlightedRunes()
-			if len(copyRunes) == 0 {
-				return nil
-			}
-
-			e.clipboard.WriteText([]byte(string(copyRunes)))
-
-			e.storeUndoAction(e.fnDeleteHighlighted())
-			e.resetHighlight()
-
-			e.setModified()
-			return nil
-		}
-
-		// Copy highlight
-		if inpututil.IsKeyJustPressed(ebiten.KeyC) {
-			if len(e.highlighted) == 0 {
-				return nil
-			}
-			copyRunes := e.getHighlightedRunes()
-			copyBytes := []byte(string(copyRunes))
-			e.clipboard.WriteText(copyBytes)
-			return nil
-		}
-
+		copyRunes := e.getHighlightedRunes()
+		copyBytes := []byte(string(copyRunes))
+		e.clipboard.WriteText(copyBytes)
 		return nil
 	}
 
@@ -884,27 +883,23 @@ func (e *Editor) Update() error {
 	up := isKeyJustPressedOrRepeating(ebiten.KeyArrowUp)
 	down := isKeyJustPressedOrRepeating(ebiten.KeyArrowDown)
 
-	if !(option || shift || command) {
-		// Exit search mode
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-			e.editMode()
-			return nil
-		}
+	// Exit search mode
+	if isOnly && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		e.editMode()
+		return nil
 	}
 
 	// Next/previous search match
-	if !(command || option || shift) {
-		if (up || down) && e.mode == SEARCH_MODE {
-			if up {
-				if e.searchIndex > -1 {
-					e.searchIndex--
-				}
-			} else if down {
-				e.searchIndex++
+	if isOnly && (up || down) && e.mode == SEARCH_MODE {
+		if up {
+			if e.searchIndex > -1 {
+				e.searchIndex--
 			}
-			e.search()
-			return nil
+		} else if down {
+			e.searchIndex++
 		}
+		e.search()
+		return nil
 	}
 
 	// Handle movement
@@ -1073,55 +1068,54 @@ func (e *Editor) Update() error {
 		return nil
 	}
 
-	if !(command || option || shift) {
-		// Enter
-		if isKeyJustPressedOrRepeating(ebiten.KeyEnter) {
-			if e.mode == SEARCH_MODE {
-				e.searchIndex++
-				e.search()
-			} else {
-				e.storeUndoAction(e.fnHandleRuneSingle('\n'))
-			}
-			return nil
+	// Enter
+	if isOnly && isKeyJustPressedOrRepeating(ebiten.KeyEnter) {
+		if e.mode == SEARCH_MODE {
+			e.searchIndex++
+			e.search()
+		} else {
+			e.storeUndoAction(e.fnHandleRuneSingle('\n'))
 		}
-
-		// Tab
-		if isKeyJustPressedOrRepeating(ebiten.KeyTab) {
-			if e.mode == SEARCH_MODE {
-				e.searchIndex++
-				e.search()
-				return nil
-			}
-			// Just insert four spaces
-			for i := 0; i < 4; i++ {
-				e.storeUndoAction(e.fnHandleRuneSingle(' '))
-			}
-			return nil
-		}
-
-		// Backspace
-		if isKeyJustPressedOrRepeating(ebiten.KeyBackspace) {
-			if e.mode == SEARCH_MODE {
-				if len(e.searchTerm) > 0 {
-					e.searchTerm = e.searchTerm[:len(e.searchTerm)-1]
-				}
-				e.search()
-				return nil
-			}
-			// Delete all highlighted content
-			if len(e.highlighted) != 0 {
-				e.storeUndoAction(e.fnDeleteHighlighted())
-			} else {
-				// Or..
-				e.storeUndoAction(e.fnDeleteSinglePrevious())
-			}
-
-			e.resetHighlight()
-			e.setModified()
-			return nil
-		}
+		return nil
 	}
 
+	// Tab
+	if isOnly && isKeyJustPressedOrRepeating(ebiten.KeyTab) {
+		if e.mode == SEARCH_MODE {
+			e.searchIndex++
+			e.search()
+			return nil
+		}
+		// Just insert four spaces
+		for i := 0; i < 4; i++ {
+			e.storeUndoAction(e.fnHandleRuneSingle(' '))
+		}
+		return nil
+	}
+
+	// Backspace
+	if isOnly && isKeyJustPressedOrRepeating(ebiten.KeyBackspace) {
+		if e.mode == SEARCH_MODE {
+			if len(e.searchTerm) > 0 {
+				e.searchTerm = e.searchTerm[:len(e.searchTerm)-1]
+			}
+			e.search()
+			return nil
+		}
+		// Delete all highlighted content
+		if len(e.highlighted) != 0 {
+			e.storeUndoAction(e.fnDeleteHighlighted())
+		} else {
+			// Or..
+			e.storeUndoAction(e.fnDeleteSinglePrevious())
+		}
+
+		e.resetHighlight()
+		e.setModified()
+		return nil
+	}
+
+	// All other keys that can be converted into runes.
 	if !(command || option) {
 		// Keys which are valid input
 		for i := 0; i < int(ebiten.KeyMax); i++ {
