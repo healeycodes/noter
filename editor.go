@@ -493,12 +493,19 @@ func (e *Editor) setModified() {
 	e.modified = true
 }
 
+// IsModified returns true if the editor is in modified state.
+func (e *Editor) IsModified() bool {
+	return e.modified
+}
+
 // Save saves the text to the Content assigned to the editor.
+// This clears the 'modified' bit also.
 func (e *Editor) Save() {
 	if e.content != nil {
 		e.content.WriteText(e.ReadText())
-		e.modified = false
 	}
+
+	e.modified = false
 }
 
 // Load loads the text from the Content assigned to the editor.
@@ -739,6 +746,33 @@ func (e *Editor) handleRune(r rune) {
 	e.setModified()
 }
 
+// Determine if the key has just been pressed, or is repeating
+func isKeyJustPressedOrRepeating(key ebiten.Key) bool {
+	tps := ebiten.ActualTPS()
+	delay_ticks := int(0.500 /*sec*/ * tps)
+	interval_ticks := int(0.050 /*sec*/ * tps)
+
+	// If tps is 0 or very small, provide reasonable defaults
+	if interval_ticks == 0 {
+		delay_ticks = 30
+		interval_ticks = 3
+	}
+
+	// Down for one tick? Then just pressed.
+	d := inpututil.KeyPressDuration(key)
+	if d == 1 {
+		return true
+	}
+
+	// Wait until after the delay to start repeating.
+	if d >= delay_ticks {
+		if (d-delay_ticks)%interval_ticks == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // Update the editor state.
 func (e *Editor) Update() error {
 	// Update the internal image when complete.
@@ -757,14 +791,11 @@ func (e *Editor) Update() error {
 	shift := ebiten.IsKeyPressed(ebiten.KeyShift)
 	option := ebiten.IsKeyPressed(ebiten.KeyAlt)
 
-	// Arrows
-	right := inpututil.IsKeyJustPressed(ebiten.KeyArrowRight)
-	left := inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft)
-	up := inpututil.IsKeyJustPressed(ebiten.KeyArrowUp)
-	down := inpututil.IsKeyJustPressed(ebiten.KeyArrowDown)
+	isCommand := command && !(shift || option)
+	isOnly := !(command || shift || option)
 
 	// Enter search mode
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyF) {
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		if e.mode == SEARCH_MODE {
 			e.editMode()
 		} else {
@@ -773,27 +804,8 @@ func (e *Editor) Update() error {
 		return nil
 	}
 
-	// Next/previous search match
-	if (up || down) && e.mode == SEARCH_MODE {
-		if up {
-			if e.searchIndex > -1 {
-				e.searchIndex--
-			}
-		} else if down {
-			e.searchIndex++
-		}
-		e.search()
-		return nil
-	}
-
-	// Exit search mode
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		e.editMode()
-		return nil
-	}
-
-	// Undo
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyZ) {
+	// Undo (may repeat)
+	if isCommand && isKeyJustPressedOrRepeating(ebiten.KeyZ) {
 		e.editMode()
 		e.resetHighlight()
 
@@ -808,26 +820,26 @@ func (e *Editor) Update() error {
 	}
 
 	// Quit
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyQ) {
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyQ) {
 		e.quit()
 		return nil
 	}
 
 	// Save
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyS) {
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		e.Save()
 		return nil
 	}
 
 	// Highlight all
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyA) {
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyA) {
 		e.editMode()
 		e.fnSelectAll()
 		return nil
 	}
 
-	// Paste
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyV) {
+	// Paste (may repeat)
+	if isCommand && isKeyJustPressedOrRepeating(ebiten.KeyV) {
 		pasteBytes := e.clipboard.ReadText()
 		rs := []rune{}
 		for _, r := range string(pasteBytes) {
@@ -839,7 +851,7 @@ func (e *Editor) Update() error {
 	}
 
 	// Cut highlight
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyX) {
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyX) {
 		copyRunes := e.getHighlightedRunes()
 		if len(copyRunes) == 0 {
 			return nil
@@ -855,13 +867,38 @@ func (e *Editor) Update() error {
 	}
 
 	// Copy highlight
-	if command && inpututil.IsKeyJustPressed(ebiten.KeyC) {
+	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyC) {
 		if len(e.highlighted) == 0 {
 			return nil
 		}
 		copyRunes := e.getHighlightedRunes()
 		copyBytes := []byte(string(copyRunes))
 		e.clipboard.WriteText(copyBytes)
+		return nil
+	}
+
+	// Arrows
+	right := isKeyJustPressedOrRepeating(ebiten.KeyArrowRight)
+	left := isKeyJustPressedOrRepeating(ebiten.KeyArrowLeft)
+	up := isKeyJustPressedOrRepeating(ebiten.KeyArrowUp)
+	down := isKeyJustPressedOrRepeating(ebiten.KeyArrowDown)
+
+	// Exit search mode
+	if isOnly && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		e.editMode()
+		return nil
+	}
+
+	// Next/previous search match
+	if isOnly && (up || down) && e.mode == SEARCH_MODE {
+		if up {
+			if e.searchIndex > -1 {
+				e.searchIndex--
+			}
+		} else if down {
+			e.searchIndex++
+		}
+		e.search()
 		return nil
 	}
 
@@ -1007,7 +1044,7 @@ func (e *Editor) Update() error {
 						e.highlightLineToLeft()
 					}
 				}
-				// Instead of fixing position, we actually want the document end
+				// instead of fixing position, we actually want the document end
 				if shift {
 					e.highlightLineToRight()
 				}
@@ -1032,7 +1069,7 @@ func (e *Editor) Update() error {
 	}
 
 	// Enter
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+	if isOnly && isKeyJustPressedOrRepeating(ebiten.KeyEnter) {
 		if e.mode == SEARCH_MODE {
 			e.searchIndex++
 			e.search()
@@ -1043,7 +1080,7 @@ func (e *Editor) Update() error {
 	}
 
 	// Tab
-	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+	if isOnly && isKeyJustPressedOrRepeating(ebiten.KeyTab) {
 		if e.mode == SEARCH_MODE {
 			e.searchIndex++
 			e.search()
@@ -1057,7 +1094,7 @@ func (e *Editor) Update() error {
 	}
 
 	// Backspace
-	if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
+	if isOnly && isKeyJustPressedOrRepeating(ebiten.KeyBackspace) {
 		if e.mode == SEARCH_MODE {
 			if len(e.searchTerm) > 0 {
 				e.searchTerm = e.searchTerm[:len(e.searchTerm)-1]
@@ -1078,20 +1115,24 @@ func (e *Editor) Update() error {
 		return nil
 	}
 
-	// Keys which are valid input
-	for i := 0; i < int(ebiten.KeyMax); i++ {
-		key := ebiten.Key(i)
-		if inpututil.IsKeyJustPressed(key) {
-			keyRune, printable := KeyToRune(key, shift)
+	// All other keys that can be converted into runes.
+	if !(command || option) {
+		// Keys which are valid input
+		for i := 0; i < int(ebiten.KeyMax); i++ {
+			key := ebiten.Key(i)
+			if isKeyJustPressedOrRepeating(key) {
+				keyRune, printable := KeyToRune(key, shift)
 
-			// Skip unprintable keys (like Enter/Esc)
-			if !printable {
-				continue
+				// Skip unprintable keys (like Enter/Esc)
+				if !printable {
+					continue
+				}
+
+				e.storeUndoAction(e.fnHandleRuneSingle(keyRune))
 			}
-
-			e.storeUndoAction(e.fnHandleRuneSingle(keyRune))
 		}
 	}
+
 	return nil
 }
 
