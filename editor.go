@@ -321,7 +321,7 @@ func WithColumns(opt int) EditorOption {
 // If not set, see the 'WithColumns()' option for the calculation.
 func WithWidth(opt int) EditorOption {
 	return func(e *Editor) {
-		e.height = opt
+		e.width = opt
 	}
 }
 
