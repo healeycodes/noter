@@ -150,3 +150,24 @@ func TestSearch(t *testing.T) {
 		t.Fatalf("Incorrect search highlights: boolean was false instead of true")
 	}
 }
+
+func TestLayout(t *testing.T) {
+	editor := NewEditor(
+		WithWidth(123),
+		WithHeight(456),
+	)
+
+	table := [](struct{ screen_w, screen_h, layout_w, layout_h int }){
+		{123, 456, 123, 456},
+		{0, 0, 123, 456},
+		{1024, 768, 123, 456},
+	}
+
+	for _, entry := range table {
+		w, h := editor.Layout(entry.screen_w, entry.screen_h)
+		if w != entry.layout_w || h != entry.layout_h {
+			t.Fatalf("Incorrect result (%v,%v) from Editor.Layout(%v,%v); expected (%v,%v)",
+				w, h, entry.screen_w, entry.screen_h, entry.layout_w, entry.layout_h)
+		}
+	}
+}

@@ -1544,7 +1544,7 @@ func (e *Editor) updateImage() {
 }
 
 func (e *Editor) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	return outsideWidth, outsideHeight
+	return e.width, e.height
 }
 
 // Supports macOS UK keyboard
