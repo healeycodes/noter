@@ -321,7 +321,7 @@ func WithColumns(opt int) EditorOption {
 // If not set, see the 'WithColumns()' option for the calculation.
 func WithWidth(opt int) EditorOption {
 	return func(e *Editor) {
-		e.height = opt
+		e.width = opt
 	}
 }
 
@@ -1428,6 +1428,22 @@ func (e *Editor) colorSelected(col, row int, runes []rune, selected map[int]bool
 	}
 }
 
+// Content() returns the current content manager.
+func (e *Editor) Content() Content {
+	return e.content
+}
+
+// SetContent() sets the content manager.
+// NOTE: This does _not_ modify the editor until a Load()
+func (e *Editor) SetContent(content Content) {
+	e.content = content
+}
+
+// ContentName() returns the current content name.
+func (e *Editor) ContentName() string {
+	return e.content_name
+}
+
 // SetContentName updates the top bar's content name.
 func (e *Editor) SetContentName(content_name string) {
 	e.content_name = content_name
@@ -1544,7 +1560,7 @@ func (e *Editor) updateImage() {
 }
 
 func (e *Editor) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	return outsideWidth, outsideHeight
+	return e.width, e.height
 }
 
 // Supports macOS UK keyboard
