@@ -27,7 +27,6 @@ import (
 	"image/color"
 	"log"
 	"sort"
-	"strings"
 	"unicode"
 
 	"github.com/hajimehoshi/bitmapfont/v3"
@@ -794,87 +793,98 @@ func (e *Editor) Update() error {
 	isCommand := command && !(shift || option)
 	isOnly := !(command || shift || option)
 
-	// Enter search mode
-	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyF) {
-		if e.mode == SEARCH_MODE {
-			e.editMode()
-		} else {
-			e.searchMode()
+	// Although ebiten.AppendInputChars() would seem to be a better
+	// solution, it 'eats' the CONTROL meta character on Linux, and
+	// does not return a rune.
+	for _, key := range inpututil.PressedKeys() {
+		if !isKeyJustPressedOrRepeating(key) {
+			continue
 		}
-		return nil
-	}
 
-	// Undo (may repeat)
-	if isCommand && isKeyJustPressedOrRepeating(ebiten.KeyZ) {
-		e.editMode()
-		e.resetHighlight()
+		// Get the active keyboard map name (keycap) for the US QUERTY scancode
+		// that was pressed.
+		letter := ebiten.KeyName(key)
+		if len(letter) == 0 && key >= ebiten.KeyA && key <= ebiten.KeyZ {
+			// KeyName not supported? Use a reasonable default 1:1 mapping.
+			letter = string([]rune{rune('a') + rune(key-ebiten.KeyA)})
+		}
 
-		for len(e.undoStack) > 0 {
-			notNoop := e.undoStack[len(e.undoStack)-1]()
-			e.undoStack = e.undoStack[:len(e.undoStack)-1]
-			if notNoop {
-				break
+		// Command-KEY codes.
+		if isCommand {
+			switch letter {
+			case "f":
+				// Enter search mode
+				if e.mode == SEARCH_MODE {
+					e.editMode()
+				} else {
+					e.searchMode()
+				}
+			case "z":
+				// Undo (may repeat)
+				e.editMode()
+				e.resetHighlight()
+
+				for len(e.undoStack) > 0 {
+					notNoop := e.undoStack[len(e.undoStack)-1]()
+					e.undoStack = e.undoStack[:len(e.undoStack)-1]
+					if notNoop {
+						break
+					}
+				}
+			case "q":
+				// Quit
+				e.quit()
+			case "s":
+				// Save
+				e.Save()
+			case "a":
+				// Highlight all
+				e.editMode()
+				e.fnSelectAll()
+			case "v":
+				// Paste (may repeat)
+				pasteBytes := e.clipboard.ReadText()
+				rs := []rune{}
+				for _, r := range string(pasteBytes) {
+					rs = append(rs, r)
+				}
+				e.storeUndoAction(e.fnHandleRuneMulti(rs))
+				e.setModified()
+			case "x":
+				// Cut highlight
+				copyRunes := e.getHighlightedRunes()
+				if len(copyRunes) == 0 {
+					break
+				}
+
+				e.clipboard.WriteText([]byte(string(copyRunes)))
+
+				e.storeUndoAction(e.fnDeleteHighlighted())
+				e.resetHighlight()
+
+				e.setModified()
+			case "c":
+				// Copy highlight
+				if len(e.highlighted) == 0 {
+					break
+				}
+				copyRunes := e.getHighlightedRunes()
+				copyBytes := []byte(string(copyRunes))
+				e.clipboard.WriteText(copyBytes)
+			default:
+				// Ignored key
 			}
 		}
-		return nil
 	}
 
-	// Quit
-	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyQ) {
-		e.quit()
-		return nil
-	}
-
-	// Save
-	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyS) {
-		e.Save()
-		return nil
-	}
-
-	// Highlight all
-	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyA) {
-		e.editMode()
-		e.fnSelectAll()
-		return nil
-	}
-
-	// Paste (may repeat)
-	if isCommand && isKeyJustPressedOrRepeating(ebiten.KeyV) {
-		pasteBytes := e.clipboard.ReadText()
-		rs := []rune{}
-		for _, r := range string(pasteBytes) {
-			rs = append(rs, r)
+	// All other keys that can be converted into runes.
+	// Even handles emoji input!
+	if !(command || option) {
+		// Keys which are valid input
+		letters := ebiten.AppendInputChars(nil)
+		for _, letter := range letters {
+			e.storeUndoAction(e.fnHandleRuneSingle(letter))
 		}
-		e.storeUndoAction(e.fnHandleRuneMulti(rs))
-		e.setModified()
-		return nil
-	}
-
-	// Cut highlight
-	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyX) {
-		copyRunes := e.getHighlightedRunes()
-		if len(copyRunes) == 0 {
-			return nil
-		}
-
-		e.clipboard.WriteText([]byte(string(copyRunes)))
-
-		e.storeUndoAction(e.fnDeleteHighlighted())
-		e.resetHighlight()
-
-		e.setModified()
-		return nil
-	}
-
-	// Copy highlight
-	if isCommand && inpututil.IsKeyJustPressed(ebiten.KeyC) {
-		if len(e.highlighted) == 0 {
-			return nil
-		}
-		copyRunes := e.getHighlightedRunes()
-		copyBytes := []byte(string(copyRunes))
-		e.clipboard.WriteText(copyBytes)
-		return nil
 	}
 
 	// Arrows
@@ -1113,24 +1123,6 @@ func (e *Editor) Update() error {
 		e.resetHighlight()
 		e.setModified()
 		return nil
-	}
-
-	// All other keys that can be converted into runes.
-	if !(command || option) {
-		// Keys which are valid input
-		for i := 0; i < int(ebiten.KeyMax); i++ {
-			key := ebiten.Key(i)
-			if isKeyJustPressedOrRepeating(key) {
-				keyRune, printable := KeyToRune(key, shift)
-
-				// Skip unprintable keys (like Enter/Esc)
-				if !printable {
-					continue
-				}
-
-				e.storeUndoAction(e.fnHandleRuneSingle(keyRune))
-			}
-		}
 	}
 
 	return nil
@@ -1561,211 +1553,4 @@ func (e *Editor) updateImage() {
 
 func (e *Editor) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return e.width, e.height
-}
-
-// Supports macOS UK keyboard
-func KeyToRune(k ebiten.Key, shift bool) (rune, bool) {
-	ret := ""
-
-	switch k {
-
-	// Alphas
-	case ebiten.KeyA:
-		ret = "A"
-	case ebiten.KeyB:
-		ret = "B"
-	case ebiten.KeyC:
-		ret = "C"
-	case ebiten.KeyD:
-		ret = "D"
-	case ebiten.KeyE:
-		ret = "E"
-	case ebiten.KeyF:
-		ret = "F"
-	case ebiten.KeyG:
-		ret = "G"
-	case ebiten.KeyH:
-		ret = "H"
-	case ebiten.KeyI:
-		ret = "I"
-	case ebiten.KeyJ:
-		ret = "J"
-	case ebiten.KeyK:
-		ret = "K"
-	case ebiten.KeyL:
-		ret = "L"
-	case ebiten.KeyM:
-		ret = "M"
-	case ebiten.KeyN:
-		ret = "N"
-	case ebiten.KeyO:
-		ret = "O"
-	case ebiten.KeyP:
-		ret = "P"
-	case ebiten.KeyQ:
-		ret = "Q"
-	case ebiten.KeyR:
-		ret = "R"
-	case ebiten.KeyS:
-		ret = "S"
-	case ebiten.KeyT:
-		ret = "T"
-	case ebiten.KeyU:
-		ret = "U"
-	case ebiten.KeyV:
-		ret = "V"
-	case ebiten.KeyW:
-		ret = "W"
-	case ebiten.KeyX:
-		ret = "X"
-	case ebiten.KeyY:
-		ret = "Y"
-	case ebiten.KeyZ:
-		ret = "Z"
-
-	// Specials
-	case ebiten.KeyBackquote:
-		if shift {
-			ret = "~"
-		} else {
-			ret = "`"
-		}
-	case ebiten.KeyBackslash:
-		if shift {
-			ret = "|"
-		} else {
-			ret = "\\"
-		}
-	case ebiten.KeyBracketLeft:
-		if shift {
-			ret = "{"
-		} else {
-			ret = "["
-		}
-	case ebiten.KeyBracketRight:
-		if shift {
-			ret = "}"
-		} else {
-			ret = "]"
-		}
-	case ebiten.KeyComma:
-		if shift {
-			ret = "<"
-		} else {
-			ret = ","
-		}
-	case ebiten.KeyDigit0:
-		if shift {
-			ret = ")"
-		} else {
-			ret = "0"
-		}
-	case ebiten.KeyDigit1:
-		if shift {
-			ret = "!"
-		} else {
-			ret = "1"
-		}
-	case ebiten.KeyDigit2:
-		if shift {
-			ret = "@"
-		} else {
-			ret = "2"
-		}
-	case ebiten.KeyDigit3:
-		if shift {
-			ret = "£"
-		} else {
-			ret = "3"
-		}
-	case ebiten.KeyDigit4:
-		if shift {
-			ret = "$"
-		} else {
-			ret = "4"
-		}
-	case ebiten.KeyDigit5:
-		if shift {
-			ret = "%"
-		} else {
-			ret = "5"
-		}
-	case ebiten.KeyDigit6:
-		if shift {
-			ret = "^"
-		} else {
-			ret = "6"
-		}
-	case ebiten.KeyDigit7:
-		if shift {
-			ret = "&"
-		} else {
-			ret = "7"
-		}
-	case ebiten.KeyDigit8:
-		if shift {
-			ret = "*"
-		} else {
-			ret = "8"
-		}
-	case ebiten.KeyDigit9:
-		if shift {
-			ret = "("
-		} else {
-			ret = "9"
-		}
-	case ebiten.KeyMinus:
-		if shift {
-			ret = "_"
-		} else {
-			ret = "-"
-		}
-	case ebiten.KeyEqual:
-		if shift {
-			ret = "+"
-		} else {
-			ret = "="
-		}
-	case ebiten.KeyPeriod:
-		if shift {
-			ret = ">"
-		} else {
-			ret = "."
-		}
-	case ebiten.KeyQuote:
-		if shift {
-			ret = "\""
-		} else {
-			ret = "'"
-		}
-	case ebiten.KeySemicolon:
-		if shift {
-			ret = ":"
-		} else {
-			ret = ";"
-		}
-	case ebiten.KeySlash:
-		if shift {
-			ret = "?"
-		} else {
-			ret = "/"
-		}
-
-	// Spacing
-	case ebiten.KeySpace:
-		ret = " "
-	}
-
-	// Handle case (only affects alphas)
-	if shift {
-		ret = strings.ToUpper(ret)
-	} else {
-		ret = strings.ToLower(ret)
-	}
-
-	if ret == "" {
-		return rune(0), false
-	}
-
-	return rune(ret[0]), true
 }
