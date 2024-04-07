@@ -906,6 +906,10 @@ func (e *Editor) Update() error {
 	left := isKeyJustPressedOrRepeating(ebiten.KeyArrowLeft)
 	up := isKeyJustPressedOrRepeating(ebiten.KeyArrowUp)
 	down := isKeyJustPressedOrRepeating(ebiten.KeyArrowDown)
+	pageup := isKeyJustPressedOrRepeating(ebiten.KeyPageUp)
+	pagedown := isKeyJustPressedOrRepeating(ebiten.KeyPageDown)
+	home := isKeyJustPressedOrRepeating(ebiten.KeyHome)
+	end := isKeyJustPressedOrRepeating(ebiten.KeyEnd)
 
 	// Exit search mode
 	if isOnly && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
@@ -927,7 +931,7 @@ func (e *Editor) Update() error {
 	}
 
 	// Handle movement
-	if right || left || up || down {
+	if right || left || up || down || home || end || pageup || pagedown {
 		e.editMode()
 
 		// Clear up old highlighting
@@ -940,6 +944,44 @@ func (e *Editor) Update() error {
 		emptyTypes := map[rune]bool{' ': true, '.': true, ',': true}
 
 		switch {
+		case end:
+			switch {
+			case !option && !command:
+				for e.cursor.x < len(e.cursor.line.values)-1 {
+					if shift {
+						e.highlight(e.cursor.line, e.cursor.x)
+					}
+					e.cursor.x++
+				}
+			}
+		case home:
+			switch {
+			case !option && !command:
+				for e.cursor.x > 0 {
+					e.cursor.x--
+					if shift {
+						e.highlight(e.cursor.line, e.cursor.x)
+					}
+				}
+			}
+		case pagedown:
+			switch {
+			case !option && !command:
+				for rows := e.rows; e.cursor.line.next != nil && rows > 0; rows-- {
+					e.cursor.line = e.cursor.line.next
+					e.firstVisible++
+				}
+				e.fixPosition()
+			}
+		case pageup:
+			switch {
+			case !option && !command:
+				for rows := e.rows; e.cursor.line.prev != nil && rows > 0; rows-- {
+					e.cursor.line = e.cursor.line.prev
+					e.firstVisible--
+				}
+				e.fixPosition()
+			}
 		case right:
 			switch {
 			case option && !command:
