@@ -999,7 +999,7 @@ func (e *Editor) Update() error {
 						e.highlight(e.cursor.line, e.cursor.x)
 					}
 				}
-			case option && !command:
+			case !option && command:
 				for e.cursor.x < len(e.cursor.line.values)-1 {
 					if shift {
 						e.highlight(e.cursor.line, e.cursor.x)
@@ -1146,6 +1146,7 @@ func (e *Editor) Update() error {
 			e.search()
 		} else {
 			e.storeUndoAction(e.fnHandleRuneSingle('\n'))
+			e.fixPosition()
 		}
 		return nil
 	}
