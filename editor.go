@@ -152,6 +152,7 @@ type Editor struct {
 	searchIndex      int
 	searchTerm       []rune
 	start            *editorLine
+	firstVisible     int
 	cursor           *editorCursor
 	modified         bool
 	highlighted      map[*editorLine]map[int]bool
@@ -772,6 +773,19 @@ func isKeyJustPressedOrRepeating(key ebiten.Key) bool {
 	return false
 }
 
+// fixPosition fixes the cursor position, and ensure the cursor is in the view.
+func (e *Editor) fixPosition() {
+	e.cursor.FixPosition()
+
+	lineno := e.getLineNumberFromLine(e.cursor.line) - 1
+	switch {
+	case lineno < e.firstVisible:
+		e.firstVisible = lineno
+	case lineno > (e.firstVisible + e.rows - 1):
+		e.firstVisible = lineno - (e.rows - 1)
+	}
+}
+
 // Update the editor state.
 func (e *Editor) Update() error {
 	// Update the internal image when complete.
@@ -892,6 +906,10 @@ func (e *Editor) Update() error {
 	left := isKeyJustPressedOrRepeating(ebiten.KeyArrowLeft)
 	up := isKeyJustPressedOrRepeating(ebiten.KeyArrowUp)
 	down := isKeyJustPressedOrRepeating(ebiten.KeyArrowDown)
+	pageup := isKeyJustPressedOrRepeating(ebiten.KeyPageUp)
+	pagedown := isKeyJustPressedOrRepeating(ebiten.KeyPageDown)
+	home := isKeyJustPressedOrRepeating(ebiten.KeyHome)
+	end := isKeyJustPressedOrRepeating(ebiten.KeyEnd)
 
 	// Exit search mode
 	if isOnly && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
@@ -913,7 +931,7 @@ func (e *Editor) Update() error {
 	}
 
 	// Handle movement
-	if right || left || up || down {
+	if right || left || up || down || home || end || pageup || pagedown {
 		e.editMode()
 
 		// Clear up old highlighting
@@ -925,8 +943,48 @@ func (e *Editor) Update() error {
 		// TODO: the characters that we filter for needs improving
 		emptyTypes := map[rune]bool{' ': true, '.': true, ',': true}
 
-		if right {
-			if option {
+		switch {
+		case end:
+			switch {
+			case !option && !command:
+				for e.cursor.x < len(e.cursor.line.values)-1 {
+					if shift {
+						e.highlight(e.cursor.line, e.cursor.x)
+					}
+					e.cursor.x++
+				}
+			}
+		case home:
+			switch {
+			case !option && !command:
+				for e.cursor.x > 0 {
+					e.cursor.x--
+					if shift {
+						e.highlight(e.cursor.line, e.cursor.x)
+					}
+				}
+			}
+		case pagedown:
+			switch {
+			case !option && !command:
+				for rows := e.rows; e.cursor.line.next != nil && rows > 0; rows-- {
+					e.cursor.line = e.cursor.line.next
+					e.firstVisible++
+				}
+				e.fixPosition()
+			}
+		case pageup:
+			switch {
+			case !option && !command:
+				for rows := e.rows; e.cursor.line.prev != nil && rows > 0; rows-- {
+					e.cursor.line = e.cursor.line.prev
+					e.firstVisible--
+				}
+				e.fixPosition()
+			}
+		case right:
+			switch {
+			case option && !command:
 				// Find the next empty
 				for e.cursor.x < len(e.cursor.line.values)-2 {
 					if shift {
@@ -941,14 +999,14 @@ func (e *Editor) Update() error {
 						e.highlight(e.cursor.line, e.cursor.x)
 					}
 				}
-			} else if command {
+			case !option && command:
 				for e.cursor.x < len(e.cursor.line.values)-1 {
 					if shift {
 						e.highlight(e.cursor.line, e.cursor.x)
 					}
 					e.cursor.x++
 				}
-			} else {
+			case !option && !command:
 				if e.cursor.x < len(e.cursor.line.values)-1 {
 					if shift {
 						e.highlight(e.cursor.line, e.cursor.x)
@@ -962,8 +1020,9 @@ func (e *Editor) Update() error {
 					e.cursor.x = 0
 				}
 			}
-		} else if left {
-			if option {
+		case left:
+			switch {
+			case option && !command:
 				// Find the next non-empty
 				for e.cursor.x > 0 {
 					e.cursor.x--
@@ -989,14 +1048,14 @@ func (e *Editor) Update() error {
 						e.highlight(e.cursor.line, e.cursor.x)
 					}
 				}
-			} else if command {
+			case !option && command:
 				for e.cursor.x > 0 {
 					e.cursor.x--
 					if shift {
 						e.highlight(e.cursor.line, e.cursor.x)
 					}
 				}
-			} else {
+			case !option && !command:
 				if e.cursor.x > 0 {
 					e.cursor.x--
 					if shift {
@@ -1010,10 +1069,11 @@ func (e *Editor) Update() error {
 					}
 				}
 			}
-		} else if up {
-			if option {
+		case up:
+			switch {
+			case option && !command:
 				e.storeUndoAction(e.fnSwapUp())
-			} else if command {
+			case !option && command:
 				if shift {
 					e.highlightLineToLeft()
 				}
@@ -1027,7 +1087,8 @@ func (e *Editor) Update() error {
 						e.highlightLineToRight()
 					}
 				}
-			} else {
+				e.fixPosition()
+			case !option && !command:
 				for x := e.cursor.x - 1; shift && x >= 0; x-- {
 					e.highlight(e.cursor.line, x)
 				}
@@ -1039,12 +1100,13 @@ func (e *Editor) Update() error {
 				} else {
 					e.cursor.x = 0
 				}
-				e.cursor.FixPosition()
+				e.fixPosition()
 			}
-		} else if down {
-			if option {
+		case down:
+			switch {
+			case option && !command && !shift:
 				e.storeUndoAction(e.fnSwapDown())
-			} else if command {
+			case !option && command:
 				for e.cursor.line.next != nil {
 					if shift {
 						e.highlightLineToRight()
@@ -1059,18 +1121,17 @@ func (e *Editor) Update() error {
 					e.highlightLineToRight()
 				}
 				e.cursor.x = len(e.cursor.line.values) - 1
-			} else {
+				e.fixPosition()
+			case !option && !command:
 				if e.cursor.line.next != nil {
 					if shift {
 						e.highlightLineToRight()
 					}
 					e.cursor.line = e.cursor.line.next
-					e.cursor.FixPosition()
+					e.fixPosition()
 					if shift {
 						e.highlightLineToLeft()
 					}
-				} else {
-					e.cursor.x = len(e.cursor.line.values) - 1
 				}
 			}
 		}
@@ -1085,6 +1146,7 @@ func (e *Editor) Update() error {
 			e.search()
 		} else {
 			e.storeUndoAction(e.fnHandleRuneSingle('\n'))
+			e.fixPosition()
 		}
 		return nil
 	}
@@ -1153,7 +1215,7 @@ func (e *Editor) fnSwapDown() func() bool {
 		e.cursor.line.values = e.cursor.line.next.values
 		e.cursor.line.next.values = tempValues
 		e.cursor.line = e.cursor.line.next
-		e.cursor.FixPosition()
+		e.fixPosition()
 
 		lineNum := e.getLineNumber()
 		curX := e.cursor.x
@@ -1163,7 +1225,7 @@ func (e *Editor) fnSwapDown() func() bool {
 			e.cursor.line.values = e.cursor.line.prev.values
 			e.cursor.line.prev.values = tempValues
 			e.cursor.line = e.cursor.line.prev
-			e.cursor.FixPosition()
+			e.fixPosition()
 			return true
 		}
 	}
@@ -1176,7 +1238,7 @@ func (e *Editor) fnSwapUp() func() bool {
 		e.cursor.line.values = e.cursor.line.prev.values
 		e.cursor.line.prev.values = tempValues
 		e.cursor.line = e.cursor.line.prev
-		e.cursor.FixPosition()
+		e.fixPosition()
 
 		lineNum := e.getLineNumber()
 		curX := e.cursor.x
@@ -1186,7 +1248,7 @@ func (e *Editor) fnSwapUp() func() bool {
 			e.cursor.line.values = e.cursor.line.next.values
 			e.cursor.line.next.values = tempValues
 			e.cursor.line = e.cursor.line.next
-			e.cursor.FixPosition()
+			e.fixPosition()
 			return true
 		}
 	}
@@ -1235,7 +1297,7 @@ func (e *Editor) deletePrevious() {
 	// Instead of allowing an empty document, "clear it" by writing a new line character
 	if e.cursor.line == e.start && len(e.cursor.line.values) == 1 {
 		e.cursor.line.values = []rune{'\n'}
-		e.cursor.FixPosition()
+		e.fixPosition()
 		return
 	}
 
@@ -1496,14 +1558,12 @@ func (e *Editor) updateImage() {
 	}
 
 	// Handle all lines
-	curLine := e.start
 	y := 0
 
-	// Find the screen chunk to render
-	lineNum := e.getLineNumber()
-	screenChunksToSkip := lineNum / e.rows
-	for i := 0; i < screenChunksToSkip*e.rows; i++ {
-		// Skip to that screen chunk
+	// Find the first visible line.
+	curLine := e.start
+	for line := 0; curLine.next != nil && line != e.firstVisible; line++ {
+		// Skip to first visible
 		curLine = curLine.next
 	}
 
