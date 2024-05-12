@@ -152,3 +152,33 @@ func TestLayout(t *testing.T) {
 		}
 	}
 }
+
+func TestMoveCursorScroll(t *testing.T) {
+	editor := NewEditor(
+		WithRows(3),
+		WithColumns(4),
+	)
+
+	editor.WriteText([]byte("1\n2\n3\n4\n5\n6\n7\n8\n"))
+
+	table := [](struct{ row, first_visible int }){
+		{0, 0}, // Move to first line.
+		{1, 0}, // Move to middle line.
+		{2, 0}, // Move to end of first page.
+		{3, 1}, // Scrolls down by one.
+		{4, 2}, // Scrolls down by one mode.
+		{2, 2}, // Back to top.
+		{7, 5}, // Move to end.
+		{5, 5}, // Move to top view of end.
+		{4, 4}, // Move up one line moves one line up.
+		{1, 1}, // Move up one line moves one line up.
+		{0, 0}, // Move up to first page.
+	}
+
+	for _, entry := range table {
+		editor.MoveCursor(entry.row, 0)
+		if entry.first_visible != editor.firstVisible {
+			t.Fatalf("Incorrect move to row %v, expected first visible to %v, was %v", entry.row, entry.first_visible, editor.firstVisible)
+		}
+	}
+}

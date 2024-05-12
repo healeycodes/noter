@@ -1225,7 +1225,6 @@ func (e *Editor) fnSwapDown() func() bool {
 			e.cursor.line.values = e.cursor.line.prev.values
 			e.cursor.line.prev.values = tempValues
 			e.cursor.line = e.cursor.line.prev
-			e.fixPosition()
 			return true
 		}
 	}
@@ -1248,7 +1247,6 @@ func (e *Editor) fnSwapUp() func() bool {
 			e.cursor.line.values = e.cursor.line.next.values
 			e.cursor.line.next.values = tempValues
 			e.cursor.line = e.cursor.line.next
-			e.fixPosition()
 			return true
 		}
 	}
@@ -1400,6 +1398,8 @@ func (e *Editor) MoveCursor(row int, col int) {
 	} else {
 		e.cursor.x = col
 	}
+
+	e.fixPosition()
 }
 
 // Get the cursor's current line number
